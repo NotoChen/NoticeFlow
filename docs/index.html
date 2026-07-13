@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NoticeFlow - macOS 通知自动化工具</title>
+    <meta
+      name="description"
+      content="NoticeFlow 是一个本地优先的 macOS 通知自动化工具，支持规则匹配、变量提取、本地脚本、HTTP 动作和执行历史。"
+    />
+    <meta property="og:title" content="NoticeFlow" />
+    <meta
+      property="og:description"
+      content="把系统通知变成可控的自动化流程：匹配通知，提取变量，执行脚本、链接、HTTP 动作和本地反馈。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://notochen.github.io/NoticeFlow/" />
+    <meta property="og:image" content="https://notochen.github.io/NoticeFlow/assets/noticeflow-icon.png" />
+    <link rel="icon" href="./assets/noticeflow-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="NoticeFlow 首页">
+        <img src="./assets/noticeflow-icon.png" alt="" />
+        <span>NoticeFlow</span>
+      </a>
+      <nav aria-label="主导航">
+        <a href="#features">能力</a>
+        <a href="#install">安装</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/NotoChen/NoticeFlow">源码</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">macOS 12+ / Tauri / 本地优先</p>
+          <h1>把系统通知变成可控的自动化流程。</h1>
+          <p class="lead">
+            NoticeFlow 读取本机 macOS 通知数据库，用规则匹配通知内容，并执行你配置的动作：打开链接、启动应用、发送本地通知、HTTP 请求或本地脚本。
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/NotoChen/NoticeFlow/releases/latest">下载最新版</a>
+            <a class="button secondary" href="https://github.com/NotoChen/NoticeFlow">查看 GitHub</a>
+          </div>
+          <div class="status-row" aria-label="项目状态">
+            <span>开源 MIT</span>
+            <span>本地存储</span>
+            <span>手动检查更新</span>
+            <span>未签名 DMG</span>
+          </div>
+        </div>
+        <div class="hero-visual" aria-label="NoticeFlow 产品预览">
+          <img class="app-icon" src="./assets/noticeflow-icon.png" alt="NoticeFlow 应用图标" />
+          <div class="flow-list">
+            <div>
+              <span>1</span>
+              <p>读取通知</p>
+            </div>
+            <div>
+              <span>2</span>
+              <p>匹配规则与变量</p>
+            </div>
+            <div>
+              <span>3</span>
+              <p>执行动作并展示结果</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="preview-section">
+        <img src="./assets/noticeflow-overview.svg" alt="NoticeFlow 界面结构预览" />
+      </section>
+
+      <section class="section" id="use-cases">
+        <div class="section-heading">
+          <p class="eyebrow">使用场景</p>
+          <h2>适合把通知接入自己的工作流</h2>
+          <p>
+            NoticeFlow 不试图替代通知中心，而是把系统通知变成可匹配、可测试、可执行、可追踪的本地自动化入口。
+          </p>
+        </div>
+        <div class="feature-grid use-grid">
+          <article>
+            <h3>链接处理</h3>
+            <p>自动打开通知中的链接，或把所有 URL 传给脚本继续处理。</p>
+          </article>
+          <article>
+            <h3>告警转发</h3>
+            <p>匹配特定应用和关键词，把重要通知发送到自建 webhook。</p>
+          </article>
+          <article>
+            <h3>脚本联动</h3>
+            <p>用 Python、JavaScript、Shell 或 AppleScript 衔接本地工具。</p>
+          </article>
+          <article>
+            <h3>通知整理</h3>
+            <p>归档、隐藏或显式删除不需要长期保留的通知记录。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <p class="eyebrow">核心能力</p>
+          <h2>围绕可靠执行设计</h2>
+        </div>
+        <div class="matrix">
+          <div>
+            <strong>匹配条件</strong>
+            <span>应用、文本、正则、URL、时间窗口</span>
+          </div>
+          <div>
+            <strong>变量系统</strong>
+            <span>标题、正文、应用、URL 集合、时间、正则捕获</span>
+          </div>
+          <div>
+            <strong>动作类型</strong>
+            <span>打开链接、启动应用、本地通知、HTTP 请求、本地脚本</span>
+          </div>
+          <div>
+            <strong>执行反馈</strong>
+            <span>动作状态、输出、错误、历史记录</span>
+          </div>
+          <div>
+            <strong>本地数据</strong>
+            <span>规则、设置、通知归档都保存在本机</span>
+          </div>
+          <div>
+            <strong>安全边界</strong>
+            <span>规则校验、数据目录保护、显式删除系统通知</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section split">
+        <div>
+          <p class="eyebrow">变量</p>
+          <h2>把通知内容传给真正需要的地方</h2>
+          <p>
+            动作中可以使用 <code>{{title}}</code>、<code>{{body}}</code>、<code>{{app}}</code>、
+            <code>{{url}}</code>、<code>{{urls}}</code>、<code>{{time}}</code> 和正则捕获变量。多个 URL 默认用空格拼接，也可以用
+            <code>{{urls_,}}</code> 这类形式指定分隔符。
+          </p>
+        </div>
+        <pre><code>open "{{url}}"
+/Users/me/scripts/handle-links.py {{urls}}
+echo "{{urls_,}}"</code></pre>
+      </section>
+
+      <section class="section install-section" id="install">
+        <div class="section-heading">
+          <p class="eyebrow">安装</p>
+          <h2>从下载到第一条规则</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>下载 DMG</strong>
+            <span>从 GitHub Releases 下载对应芯片的安装包：Apple Silicon 选 aarch64，Intel 选 x64。</span>
+          </li>
+          <li>
+            <strong>允许打开</strong>
+            <span>当前构建未签名，首次启动需要在系统设置中手动允许。</span>
+          </li>
+          <li>
+            <strong>授予权限</strong>
+            <span>读取系统通知数据库需要完全磁盘访问权限。</span>
+          </li>
+          <li>
+            <strong>测试规则</strong>
+            <span>先用通知样本测试匹配结果和变量替换，再启用自动化。</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section split">
+        <div>
+          <p class="eyebrow">隐私与安全</p>
+          <h2>默认只在本机工作</h2>
+          <p>
+            NoticeFlow 默认不会把通知内容发送到远程服务。规则、设置、通知归档和动作历史都保存在配置的数据目录中。HTTP 动作和脚本是否发送数据，取决于你的规则配置。
+          </p>
+        </div>
+        <div class="link-card">
+          <a href="https://github.com/NotoChen/NoticeFlow/blob/main/PRIVACY.md">隐私说明</a>
+          <a href="https://github.com/NotoChen/NoticeFlow/blob/main/SECURITY.md">安全说明</a>
+          <a href="https://github.com/NotoChen/NoticeFlow/blob/main/CONTRIBUTING.md">贡献说明</a>
+          <a href="https://github.com/NotoChen/NoticeFlow/blob/main/docs/release.md">发布检查</a>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="section-heading">
+          <p class="eyebrow">FAQ</p>
+          <h2>常见问题</h2>
+        </div>
+        <div class="faq-list">
+          <details open>
+            <summary>为什么需要完全磁盘访问权限？</summary>
+            <p>macOS 通知历史保存在本机受保护的 <code>usernoted</code> 数据库中。NoticeFlow 需要读取该数据库才能展示和匹配通知。</p>
+          </details>
+          <details>
+            <summary>为什么首次打开会被 macOS 拦截？</summary>
+            <p>当前 DMG 没有做 Apple Developer ID 签名和公证。GitHub 分发可以使用，但首次打开需要手动允许。</p>
+          </details>
+          <details>
+            <summary>规则中的脚本是否会自动联网？</summary>
+            <p>NoticeFlow 本身不会默认同步通知内容。脚本和 HTTP 动作由用户配置，如果脚本调用网络工具，数据可能离开本机。</p>
+          </details>
+          <details>
+            <summary>正则规则和浏览器 JavaScript 正则一致吗？</summary>
+            <p>不完全一致。NoticeFlow 规则校验和后端匹配使用 Rust <code>regex</code> 引擎，不支持 look-around 和 backreference。</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="cta-section">
+        <div>
+          <p class="eyebrow">开始使用</p>
+          <h2>把下一条通知交给规则处理。</h2>
+        </div>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/NotoChen/NoticeFlow/releases/latest">下载最新版</a>
+          <a class="button secondary" href="https://github.com/NotoChen/NoticeFlow/issues">提交反馈</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT 许可证。</span>
+      <a href="https://github.com/NotoChen/NoticeFlow/releases/latest">最新版本</a>
+      <a href="https://github.com/NotoChen/NoticeFlow">GitHub 仓库</a>
+      <a href="https://github.com/NotoChen/NoticeFlow/blob/main/README.md">README</a>
+    </footer>
+  </body>
+</html>

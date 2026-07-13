@@ -1,0 +1,55 @@
+{
+  "name": "noticeflow",
+  "version": "0.1.0",
+  "description": "本地优先的 macOS 通知自动化工具。",
+  "license": "MIT",
+  "author": "NotoChen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NotoChen/NoticeFlow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NotoChen/NoticeFlow/issues"
+  },
+  "homepage": "https://notochen.github.io/NoticeFlow/",
+  "keywords": [
+    "tauri",
+    "macos",
+    "notifications",
+    "automation"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:mac:arm": "tauri build --target aarch64-apple-darwin --bundles dmg",
+    "tauri:build:mac:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
+    "tauri:build:mac:release": "tauri build --target aarch64-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json && tauri build --target x86_64-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json",
+    "tauri:build:mac:unsigned": "tauri build --target aarch64-apple-darwin --bundles dmg --no-sign && tauri build --target x86_64-apple-darwin --bundles dmg --no-sign",
+    "release:manifest": "node tools/create-updater-manifest.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-process": "^2.3.0",
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.2",
+    "@types/react": "^18.3.25",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1"
+  }
+}

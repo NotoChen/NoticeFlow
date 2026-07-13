@@ -1,0 +1,22 @@
+<svg viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="icon">
+      <path d="M1024 512C1024 107.6 916.4 0 512 0
+        S0 107.6 0 512s107.6 512 512 512
+        512-107.6 512-512Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#icon)">
+    <rect width="1024" height="1024" fill="#0A0A0F"/>
+    <rect x="200" y="192" width="624" height="92"
+      rx="46" fill="#FF6B2C"/>
+    <rect x="200" y="328" width="400" height="92"
+      rx="46" fill="#FF2D6B"/>
+    <rect x="200" y="464" width="560" height="92"
+      rx="46" fill="#B44AFF"/>
+    <rect x="200" y="600" width="320" height="92"
+      rx="46" fill="#2D7AFF"/>
+    <rect x="200" y="736" width="240" height="92"
+      rx="46" fill="#00E5CC"/>
+  </g>
+</svg>
