@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Archive, ArrowLeft, Clock, Database, Download, FileText, FolderOpen, History, RefreshCw, RotateCcw, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { Archive, ArrowLeft, Clock, Database, Download, FolderOpen, RefreshCw, RotateCcw, Save, ShieldCheck, X } from "lucide-react";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AppIcon, AppPicker } from "../../components/AppPicker";
@@ -7,7 +7,6 @@ import { EmptyBlock, Field, StatusPill } from "../../components/FormBits";
 import { Switch } from "../../components/Switch";
 import { sameStringSetIgnoreOrder } from "../../lib/appModel";
 import type {
-  ActionHistoryEntry,
   ActionQueueItem,
   ActionQueueStatus,
   ApplicationInfo,
@@ -18,7 +17,7 @@ import type {
 } from "../../lib/tauri";
 import { chooseDataDirectory, saveAppSettings } from "../../lib/tauri";
 
-type OperationErrorScope = "general" | "update" | "permission" | "data" | "archive" | "history";
+type OperationErrorScope = "general" | "update" | "permission" | "data" | "archive";
 type OperationErrorState = {
   scope: OperationErrorScope;
   message: string;
@@ -32,7 +31,6 @@ export function SettingsPanel(props: {
   ruleCount: number;
   notificationCount: number;
   actionQueue: ActionQueueStatus | null;
-  actionHistory: ActionHistoryEntry[];
   archiveStats: ArchiveStats | null;
   systemDeleteAudit: SystemDeleteAuditEntry[];
   refresh: () => Promise<void>;
@@ -40,7 +38,6 @@ export function SettingsPanel(props: {
   revealPath: (path: string) => Promise<void>;
   openFullDiskAccessSettings: () => Promise<void>;
   restoreHiddenNotifications: () => Promise<void>;
-  clearActionHistory: () => Promise<void>;
   compactArchive: () => Promise<void>;
   pruneArchive: (retentionDays: number) => Promise<void>;
   onSaved: (info: SettingsInfo) => void;
@@ -50,7 +47,6 @@ export function SettingsPanel(props: {
   const [busy, setBusy] = useState("");
   const [updateMessage, setUpdateMessage] = useState("");
   const [retentionDays, setRetentionDays] = useState(90);
-  const [expandedHistoryId, setExpandedHistoryId] = useState("");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [dataDirectory, setDataDirectory] = useState("");
   const [appFilterMode, setAppFilterMode] = useState<"exclude" | "include">("exclude");
@@ -396,55 +392,6 @@ export function SettingsPanel(props: {
             {!props.systemDeleteAudit.length ? <EmptyBlock label="暂无系统删除记录" /> : null}
           </div>
         </section>
-
-        <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <History size={18} className="text-subdued" />
-              <h2 className="m-0 text-sm font-semibold">执行历史</h2>
-            </div>
-            <button className="button-secondary" onClick={() => runOperation("clear-history", props.clearActionHistory, "history")} disabled={!!busy || !props.actionHistory.length}>
-              <Trash2 size={14} />
-              清空
-            </button>
-          </div>
-          <div className="grid gap-2">
-            {props.actionHistory.slice(0, 80).map((item) => {
-              const variables = parseVariableSnapshot(item.variablesJson);
-              const expanded = expandedHistoryId === item.id;
-              return (
-                <div key={item.id} className="grid gap-1 rounded-md border border-border px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 truncate text-sm font-medium">{item.ruleName || "未命名规则"}</div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${item.success ? "bg-emerald-50 text-accent" : "bg-red-50 text-red-600"}`}>
-                      {item.success ? "成功" : "失败"}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-subdued">
-                    <span>{formatHistoryTime(item.timestamp)}</span>
-                    <span>{item.actionType} #{(item.actionIndex ?? 0) + 1}</span>
-                    <span>{item.durationMs}ms</span>
-                    <span>尝试 {item.attemptCount ?? 1}</span>
-                    {item.queueId ? <span className="font-mono">队列 {shortId(item.queueId)}</span> : null}
-                  </div>
-                  <div className="line-clamp-2 text-xs text-slate-600">{item.message}</div>
-                  {variables.length ? (
-                    <button
-                      className="mt-1 inline-flex w-fit items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-subdued hover:bg-muted"
-                      onClick={() => setExpandedHistoryId(expanded ? "" : item.id)}
-                    >
-                      <FileText size={12} />
-                      变量快照
-                    </button>
-                  ) : null}
-                  {expanded ? <VariableSnapshot rows={variables} /> : null}
-                </div>
-              );
-            })}
-            {!props.actionHistory.length ? <EmptyBlock label="暂无执行历史" /> : null}
-            {operationErrorFor("history")}
-          </div>
-        </section>
       </section>
     </div>
   );
@@ -485,19 +432,6 @@ function QueueRow({ item, label, strong }: { item: ActionQueueItem; label: strin
   );
 }
 
-function VariableSnapshot({ rows }: { rows: Array<[string, string]> }) {
-  return (
-    <div className="mt-2 grid max-h-56 gap-1 overflow-auto rounded-md border border-border bg-muted p-2">
-      {rows.map(([key, value]) => (
-        <div key={key} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 text-[11px]">
-          <div className="truncate font-mono text-subdued">{key}</div>
-          <div className="whitespace-pre-wrap break-words text-slate-700">{value || "空"}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function PathRow({ label, path, onReveal }: { label: string; path: string; onReveal: (path: string) => Promise<void> }) {
   return (
     <div className="grid grid-cols-[96px_minmax(0,1fr)_36px] items-center gap-2">
@@ -527,21 +461,4 @@ function formatBytes(value: number) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
-
-function shortId(value: string) {
-  return value.length <= 8 ? value : value.slice(0, 8);
-}
-
-function parseVariableSnapshot(value: string | undefined) {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
-    return Object.entries(parsed)
-      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
-      .sort(([left], [right]) => left.localeCompare(right));
-  } catch {
-    return [];
-  }
 }

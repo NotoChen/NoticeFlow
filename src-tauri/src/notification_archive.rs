@@ -26,6 +26,8 @@ pub struct ActionHistoryEntry {
     pub action_type: String,
     pub success: bool,
     pub message: String,
+    pub output: Option<String>,
+    pub origin: String,
     pub duration_ms: u64,
     pub attempt_count: u32,
     pub variables_json: Option<String>,
@@ -294,11 +296,13 @@ pub fn append_action_history(entries: &[ActionHistoryEntry]) -> Result<(), Box<d
                 action_type,
                 success,
                 message,
+                output,
+                origin,
                 duration_ms,
                 attempt_count,
                 variables_json
             )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
             "#,
             params![
                 entry.id,
@@ -313,6 +317,8 @@ pub fn append_action_history(entries: &[ActionHistoryEntry]) -> Result<(), Box<d
                 entry.action_type,
                 if entry.success { 1_i64 } else { 0_i64 },
                 entry.message,
+                entry.output,
+                entry.origin,
                 entry.duration_ms as i64,
                 entry.attempt_count as i64,
                 entry.variables_json,
@@ -341,7 +347,7 @@ pub fn recent_action_history(limit: usize) -> Result<Vec<ActionHistoryEntry>, Bo
         r#"
         select id, timestamp, queue_id, rule_id, rule_name, notification_id, notification_title,
                app_identifier, action_index, action_type, success, message, duration_ms,
-               attempt_count, variables_json
+               attempt_count, variables_json, output, origin
         from action_history
         order by timestamp desc, rowid desc
         limit ?1
@@ -505,6 +511,8 @@ fn initialize_archive_schema(connection: &Connection) -> Result<(), Box<dyn Erro
             action_type text not null,
             success integer not null,
             message text not null,
+            output text,
+            origin text not null default 'auto',
             duration_ms integer not null,
             attempt_count integer not null default 1,
             variables_json text
@@ -545,6 +553,13 @@ fn initialize_archive_schema(connection: &Connection) -> Result<(), Box<dyn Erro
         "integer not null default 1",
     )?;
     ensure_column(connection, "action_history", "variables_json", "text")?;
+    ensure_column(connection, "action_history", "output", "text")?;
+    ensure_column(
+        connection,
+        "action_history",
+        "origin",
+        "text not null default 'auto'",
+    )?;
     Ok(())
 }
 
@@ -630,6 +645,11 @@ fn action_history_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActionHi
         duration_ms: duration_ms.max(0) as u64,
         attempt_count: attempt_count.max(1) as u32,
         variables_json: row.get(14)?,
+        output: row.get(15)?,
+        origin: row
+            .get::<_, Option<String>>(16)?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "auto".to_string()),
     })
 }
 

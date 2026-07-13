@@ -1,10 +1,12 @@
 import type {
   ActionConfig,
+  ActionExecution,
   ApplicationInfo,
   AutomationRule,
   AutomationStatus,
   MatchCondition,
   NotificationRecord,
+  RuleDryRunReport,
   SettingsInfo,
   VariableExtractionRule,
   VariablePreview,
@@ -13,8 +15,11 @@ import { validateRegex } from "./tauri";
 
 export const baseVariables = ["app_id", "app_name", "title", "subtitle", "body", "url", "url_count", "urls", "urls_count", "urls_json", "timestamp"];
 
-export type MainView = "home" | "editor" | "notifications" | "settings";
+export type MainView = "home" | "editor" | "notifications" | "history" | "settings";
 export type RuleEditorTab = "basic" | "match" | "variables" | "actions";
+export type RuleTestReport =
+  | { kind: "dry"; report: RuleDryRunReport }
+  | { kind: "executed"; executions: ActionExecution[] };
 export type NotificationRefreshOptions = {
   selectLatestNotification?: boolean;
   selectLatestPreview?: boolean;

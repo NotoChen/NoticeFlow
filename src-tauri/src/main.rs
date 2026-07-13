@@ -1144,7 +1144,7 @@ fn test_rule_on_notification(
     rule_id: String,
     record_id: i64,
     state: State<AppState>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<action_runner::ActionExecution>, String> {
     let rules = state
         .rules
         .lock()
@@ -1155,7 +1155,7 @@ fn test_rule_on_notification(
         .find(|rule| rule.id == rule_id)
         .ok_or_else(|| "未找到规则".to_string())?;
     validate_rule_regexes(&rule)?;
-    run_rule_on_record(rule, record_id, true, &state)
+    execute_rule_on_record(rule, record_id, &state)
 }
 
 #[tauri::command]
@@ -1163,19 +1163,23 @@ fn test_rule_draft_on_notification(
     rule: AutomationRule,
     record_id: i64,
     state: State<AppState>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<action_runner::ActionExecution>, String> {
     validate_rule_regexes(&rule)?;
-    run_rule_on_record(rule, record_id, true, &state)
+    execute_rule_on_record(rule, record_id, &state)
 }
 
 #[tauri::command]
 fn match_rule_draft_on_notification(
     rule: AutomationRule,
     record_id: i64,
-    state: State<AppState>,
 ) -> Result<Vec<String>, String> {
     validate_rule_regexes(&rule)?;
-    run_rule_on_record(rule, record_id, false, &state)
+    let record = notification_record_by_id(record_id)?;
+    let analysis = analyze_rule_match(&rule, &record);
+    if !analysis.explanation.matched {
+        return Err(analysis.explanation.message);
+    }
+    Ok(match_explanation_lines(&analysis.explanation))
 }
 
 #[tauri::command]
@@ -1188,22 +1192,42 @@ fn explain_rule_draft_on_notification(
     Ok(analyze_rule_match(&rule, &record).explanation)
 }
 
-fn run_rule_on_record(
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuleDryRunReport {
+    explanation: MatchExplanation,
+    actions: Vec<action_runner::ActionDryRun>,
+}
+
+/// 干跑：解释匹配结果并展示变量替换后的动作参数，不执行任何动作。
+#[tauri::command]
+fn dry_run_rule_draft_on_notification(
     rule: AutomationRule,
     record_id: i64,
-    execute_actions: bool,
+) -> Result<RuleDryRunReport, String> {
+    validate_rule_regexes(&rule)?;
+    let record = notification_record_by_id(record_id)?;
+    let analysis = analyze_rule_match(&rule, &record);
+    let actions = action_runner::dry_run_actions(
+        rule.actions.as_deref().unwrap_or(&[]),
+        &analysis.variables,
+    );
+    Ok(RuleDryRunReport {
+        explanation: analysis.explanation,
+        actions,
+    })
+}
+
+fn execute_rule_on_record(
+    rule: AutomationRule,
+    record_id: i64,
     state: &State<AppState>,
-) -> Result<Vec<String>, String> {
-    if execute_actions {
-        validate_rule_for_save(&rule).map_err(|error| format!("规则「{}」{error}", rule.name))?;
-    }
+) -> Result<Vec<action_runner::ActionExecution>, String> {
+    validate_rule_for_save(&rule).map_err(|error| format!("规则「{}」{error}", rule.name))?;
     let record = notification_record_by_id(record_id)?;
     let analysis = analyze_rule_match(&rule, &record);
     if !analysis.explanation.matched {
         return Err(analysis.explanation.message);
-    }
-    if !execute_actions {
-        return Ok(match_explanation_lines(&analysis.explanation));
     }
     let actions = rule.actions.clone().unwrap_or_default();
     let executions = action_runner::run_actions_detailed(&actions, &analysis.variables);
@@ -1214,13 +1238,14 @@ fn run_rule_on_record(
         &executions,
         None,
         &analysis.variables,
+        "test",
     );
     let logs = executions
-        .into_iter()
-        .map(|execution| execution.message)
+        .iter()
+        .map(|execution| execution.message.clone())
         .collect::<Vec<_>>();
-    push_logs(state, logs.clone());
-    Ok(logs)
+    push_logs(state, logs);
+    Ok(executions)
 }
 
 #[tauri::command]
@@ -1465,6 +1490,7 @@ fn main() {
             test_rule_draft_on_notification,
             match_rule_draft_on_notification,
             explain_rule_draft_on_notification,
+            dry_run_rule_draft_on_notification,
             validate_regex
         ])
         .on_window_event(|window, event| {
@@ -1474,6 +1500,12 @@ fn main() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                // 关闭主窗口后应用退到托盘常驻，隐藏 Dock 图标；
+                // 重新打开窗口时在 show_main_window 中恢复。
+                #[cfg(target_os = "macos")]
+                let _ = window
+                    .app_handle()
+                    .set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
         })
         .setup(|app| {
@@ -1595,6 +1627,9 @@ fn inside_rounded_rect(local_x: u32, local_y: u32, width: u32, height: u32, radi
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
+    // 从托盘常驻状态恢复为常规应用（Dock 图标重新可见），再显示窗口。
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title("NoticeFlow");
         let _ = window.show();
@@ -1873,6 +1908,7 @@ fn start_action_worker(app: tauri::AppHandle) {
                 &executions,
                 Some(&job.id),
                 &job.variables,
+                "auto",
             );
             push_logs(&state, logs.clone());
             if let Ok(mut current) = state.current_action_job.lock() {
@@ -2569,6 +2605,7 @@ fn record_action_history(
     executions: &[action_runner::ActionExecution],
     queue_id: Option<&str>,
     variables: &BTreeMap<String, String>,
+    origin: &str,
 ) {
     let variables_json = visible_variables_json(variables);
     let entries = executions
@@ -2587,7 +2624,9 @@ fn record_action_history(
             action_type: execution.action_type.clone(),
             success: execution.success,
             message: execution.message.clone(),
-            duration_ms: execution.duration_ms.min(u64::MAX as u128) as u64,
+            output: execution.output.clone(),
+            origin: origin.to_string(),
+            duration_ms: execution.duration_ms,
             attempt_count: execution.attempt_count,
             variables_json: variables_json.clone(),
         })

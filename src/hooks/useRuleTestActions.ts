@@ -1,19 +1,19 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { validationIssuesWithBackend } from "../lib/appModel";
+import type { RuleEditorTab, RuleTestReport } from "../lib/appModel";
 import {
-  explainRuleDraftOnNotification,
+  dryRunRuleDraftOnNotification,
   testRuleDraftOnNotification,
 } from "../lib/tauri";
-import type { AutomationRule, AutomationStatus, MatchExplanation } from "../lib/tauri";
-import type { RuleEditorTab } from "../lib/appModel";
+import type { AutomationRule } from "../lib/tauri";
 
 type UseRuleTestActionsOptions = {
   editingRule: AutomationRule | null;
   previewRecordId: number | null;
   editingIsDirty: boolean;
-  setStatus: Dispatch<SetStateAction<AutomationStatus | null>>;
   setEditorTab: Dispatch<SetStateAction<RuleEditorTab>>;
+  setTestReport: Dispatch<SetStateAction<RuleTestReport | null>>;
   setNotice: (message: string) => void;
   setError: (message: string) => void;
   loadActionHistory: () => Promise<void>;
@@ -24,116 +24,75 @@ export function useRuleTestActions({
   editingRule,
   previewRecordId,
   editingIsDirty,
-  setStatus,
   setEditorTab,
+  setTestReport,
   setNotice,
   setError,
   loadActionHistory,
   loadActionQueue,
 }: UseRuleTestActionsOptions) {
-  const appendStatusLogs = useCallback((logs: string[]) => {
-    setStatus((current) => ({
-      watcherRunning: current?.watcherRunning ?? true,
-      lastRecordId: current?.lastRecordId ?? 0,
-      logs: [...(current?.logs ?? []), ...logs].slice(-200),
-    }));
-  }, [setStatus]);
-
-  const runMatchOnly = useCallback(async () => {
-    if (!editingRule || !previewRecordId) return;
-    const issues = (await validationIssuesWithBackend(editingRule)).filter((issue) => issue.tab !== "actions");
-    if (issues.length) {
-      setEditorTab(issues[0].tab);
-      setNotice("");
-      setError(`请补齐：${issues.map((issue) => issue.label).join("、")}`);
-      return;
-    }
-    try {
-      const explanation = await explainRuleDraftOnNotification(editingRule, previewRecordId);
-      appendStatusLogs(matchExplanationLines(explanation));
-      if (explanation.matched) {
-        setError("");
-        setNotice("匹配检查完成，未执行动作");
-      } else {
-        setNotice("");
-        setError(explanation.message);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [appendStatusLogs, editingRule, previewRecordId, setEditorTab, setError, setNotice]);
-
-  const runTest = useCallback(async () => {
-    if (!editingRule || !previewRecordId) return;
+  const ensureReady = useCallback(async () => {
+    if (!editingRule || !previewRecordId) return false;
     const issues = await validationIssuesWithBackend(editingRule);
     if (issues.length) {
       setEditorTab(issues[0].tab);
       setNotice("");
       setError(`请补齐：${issues.map((issue) => issue.label).join("、")}`);
-      return;
+      return false;
     }
+    return true;
+  }, [editingRule, previewRecordId, setEditorTab, setError, setNotice]);
+
+  // 测试 = 干跑：解释匹配结果并预览变量替换后的动作参数，不执行动作。
+  const runTest = useCallback(async () => {
+    if (!editingRule || !previewRecordId) return;
+    if (!(await ensureReady())) return;
     try {
-      const logs = await testRuleDraftOnNotification(editingRule, previewRecordId);
-      appendStatusLogs(logs);
+      const report = await dryRunRuleDraftOnNotification(editingRule, previewRecordId);
+      setTestReport({ kind: "dry", report });
       setError("");
-      setNotice(editingIsDirty ? "草稿测试完成，未保存修改仍保留" : "测试执行完成");
+      setNotice(
+        report.explanation.matched
+          ? "测试完成：动作未真正执行，请在结果面板中确认后再执行"
+          : "测试完成：当前通知未命中该规则",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [editingRule, ensureReady, previewRecordId, setError, setNotice, setTestReport]);
+
+  // 真实执行：动作会实际运行（脚本、HTTP 等有副作用），结果写入执行历史。
+  const runExecute = useCallback(async () => {
+    if (!editingRule || !previewRecordId) return;
+    if (!(await ensureReady())) return;
+    try {
+      const executions = await testRuleDraftOnNotification(editingRule, previewRecordId);
+      setTestReport({ kind: "executed", executions });
+      setError("");
+      const failed = executions.filter((item) => !item.success).length;
+      const summary = failed
+        ? `已执行 ${executions.length} 个动作，${failed} 个失败`
+        : `已执行 ${executions.length} 个动作`;
+      setNotice(editingIsDirty ? `${summary}（草稿修改仍未保存）` : summary);
       loadActionHistory().catch(() => undefined);
       loadActionQueue().catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [
-    appendStatusLogs,
     editingIsDirty,
     editingRule,
+    ensureReady,
     loadActionHistory,
     loadActionQueue,
     previewRecordId,
-    setEditorTab,
     setError,
     setNotice,
+    setTestReport,
   ]);
 
   return {
-    runMatchOnly,
     runTest,
+    runExecute,
   };
-}
-
-function matchExplanationLines(explanation: MatchExplanation) {
-  const lines = [
-    explanation.message,
-    `应用：${passFail(explanation.appMatched)}；时间：${passFail(explanation.timeMatched)}；变量：${explanation.variableCount} 个`,
-  ];
-  for (const [index, condition] of explanation.conditions.entries()) {
-    lines.push(
-      `条件 ${index + 1}：${condition.variableName} ${operatorLabel(condition.operatorType)} ${condition.expectedValue || ""}，实际值：${shortValue(condition.actualValue)}，${passFail(condition.matched)}`,
-    );
-  }
-  return lines;
-}
-
-function operatorLabel(value: string) {
-  const labels: Record<string, string> = {
-    equals: "等于",
-    not_equals: "不等于",
-    contains: "包含",
-    not_contains: "不包含",
-    starts_with: "开头是",
-    ends_with: "结尾是",
-    regex: "正则匹配",
-    not_regex: "正则不匹配",
-    is_empty: "为空",
-    is_not_empty: "不为空",
-  };
-  return labels[value] ?? value;
-}
-
-function passFail(value: boolean) {
-  return value ? "通过" : "未通过";
-}
-
-function shortValue(value: string) {
-  const trimmed = value.trim();
-  return trimmed.length > 120 ? `${trimmed.slice(0, 120)}...` : trimmed;
 }

@@ -117,6 +117,8 @@ export type ActionHistoryEntry = {
   actionType: string;
   success: boolean;
   message: string;
+  output?: string;
+  origin: "auto" | "test" | string;
   durationMs: number;
   attemptCount: number;
   variablesJson?: string;
@@ -161,6 +163,30 @@ export type MatchExplanation = {
   variableCount: number;
   conditions: ConditionExplanation[];
   message: string;
+};
+
+export type ActionExecution = {
+  actionType: string;
+  success: boolean;
+  message: string;
+  output?: string;
+  durationMs: number;
+  attemptCount: number;
+};
+
+export type DryRunParameter = {
+  name: string;
+  value: string;
+};
+
+export type ActionDryRun = {
+  actionType: string;
+  parameters: DryRunParameter[];
+};
+
+export type RuleDryRunReport = {
+  explanation: MatchExplanation;
+  actions: ActionDryRun[];
 };
 
 export type SettingsUpdate = {
@@ -279,11 +305,11 @@ export function matchRuleNamesForNotification(recordId: number) {
 }
 
 export function testRuleOnNotification(ruleId: string, recordId: number) {
-  return invoke<string[]>("test_rule_on_notification", { ruleId, recordId });
+  return invoke<ActionExecution[]>("test_rule_on_notification", { ruleId, recordId });
 }
 
 export function testRuleDraftOnNotification(rule: AutomationRule, recordId: number) {
-  return invoke<string[]>("test_rule_draft_on_notification", { rule, recordId });
+  return invoke<ActionExecution[]>("test_rule_draft_on_notification", { rule, recordId });
 }
 
 export function matchRuleDraftOnNotification(rule: AutomationRule, recordId: number) {
@@ -292,4 +318,8 @@ export function matchRuleDraftOnNotification(rule: AutomationRule, recordId: num
 
 export function explainRuleDraftOnNotification(rule: AutomationRule, recordId: number) {
   return invoke<MatchExplanation>("explain_rule_draft_on_notification", { rule, recordId });
+}
+
+export function dryRunRuleDraftOnNotification(rule: AutomationRule, recordId: number) {
+  return invoke<RuleDryRunReport>("dry_run_rule_draft_on_notification", { rule, recordId });
 }

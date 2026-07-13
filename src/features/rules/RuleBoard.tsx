@@ -1,5 +1,5 @@
 import type { PointerEvent } from "react";
-import { GripVertical, Plus, RefreshCw, Search, Settings } from "lucide-react";
+import { GripVertical, History, Plus, RefreshCw, Search, Settings } from "lucide-react";
 import { AppIcon, AppPicker } from "../../components/AppPicker";
 import { Switch } from "../../components/Switch";
 import type { ApplicationInfo, AutomationRule, NotificationRecord } from "../../lib/tauri";
@@ -21,6 +21,7 @@ export function RuleBoard(props: {
   createRule: () => void;
   refreshAll: () => void;
   openSettings: () => void;
+  openHistory: () => void;
   selectRule: (rule: AutomationRule) => void;
   toggleRule: (rule: AutomationRule, enabled: boolean) => void;
   startDrag: (event: PointerEvent, rule: AutomationRule) => void;
@@ -49,6 +50,9 @@ export function RuleBoard(props: {
           </button>
           <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white disabled:opacity-50" disabled={props.loading} onClick={props.refreshAll} aria-label="刷新全部状态" title="刷新全部状态">
             <RefreshCw size={15} className={props.loading ? "animate-spin" : ""} />
+          </button>
+          <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white" onClick={props.openHistory} aria-label="执行历史" title="执行历史">
+            <History size={15} />
           </button>
           <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white" onClick={props.openSettings} aria-label="设置" title="设置">
             <Settings size={15} />

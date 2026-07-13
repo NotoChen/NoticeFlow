@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { ArrowLeft, Copy, FileCode2, Play, Plus, RefreshCw, Save, Search, SearchCheck, Trash2, Workflow } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Copy, FileCode2, FlaskConical, Play, Plus, RefreshCw, Save, Search, Trash2, Workflow, X, XCircle } from "lucide-react";
 import { AppPicker } from "../../components/AppPicker";
 import { EmptyBlock, Field, Header, ReadonlyField, RemoveButton, StatusPill, TabLabel, TextAreaParam, TextParam } from "../../components/FormBits";
 import { Switch } from "../../components/Switch";
@@ -8,14 +8,17 @@ import { NotificationList } from "../notifications/NotificationsPage";
 import { chooseScriptFile } from "../../lib/tauri";
 import type {
   ActionConfig,
+  ActionExecution,
   ApplicationInfo,
   AutomationRule,
   MatchCondition,
+  MatchExplanation,
   NotificationRecord,
   VariableExtractionRule,
   VariablePreview,
 } from "../../lib/tauri";
-import type { RuleEditorTab, RuleIssue } from "../../lib/appModel";
+import type { RuleEditorTab, RuleIssue, RuleTestReport } from "../../lib/appModel";
+import { actionTypeLabel } from "../../lib/historyModel";
 
 const operators = [
   ["equals", "等于"],
@@ -41,6 +44,13 @@ const actionTypes = [
   ["run_python", "Python"],
   ["http_request", "HTTP 请求"],
 ] as const;
+
+const shellModeHints: Record<string, string> = {
+  standard: "标准：干净环境执行，不加载个人 shell 配置，PATH 里可能没有 Homebrew 等自装工具。",
+  login: "登录：加载 .zprofile / .bash_profile，继承你终端里的 PATH，脚本找不到命令时优先选这个。",
+  interactive: "交互：加载 .zshrc / .bashrc，可以使用其中定义的 alias 和函数。",
+  login_interactive: "登录 + 交互：全部配置都加载，最接近你在终端手动执行的环境，启动稍慢。",
+};
 
 const actionGroups = [
   {
@@ -94,7 +104,7 @@ const actionTemplates: Array<{ label: string; action: ActionConfig }> = [
   },
   {
     label: "本地脚本",
-    action: { type: "run_shell", parameters: { shell: "bash", shell_mode: "standard", script: "", timeout_seconds: "60" } },
+    action: { type: "run_shell", parameters: { shell: "bash", shell_mode: "login", script: "", timeout_seconds: "60" } },
   },
 ];
 
@@ -116,9 +126,11 @@ export function RuleEditor(props: {
   updateActionParam: (index: number, key: string, value: string) => void;
   isDirty: boolean;
   canRunPreviewActions: boolean;
+  testReport: RuleTestReport | null;
   onSave: () => void;
-  onRunMatchOnly: () => void;
   onRunTest: () => void;
+  onRunExecute: () => void;
+  onCloseTestReport: () => void;
   onBack: () => void;
 }) {
   const { rule } = props;
@@ -169,12 +181,8 @@ export function RuleEditor(props: {
         </button>
         <div className="flex items-center gap-2">
           <StatusPill ok={!props.isDirty} okText="已保存" badText="未保存" />
-          <button className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm disabled:opacity-50" disabled={!props.canRunPreviewActions} onClick={props.onRunMatchOnly} title="只检查当前预览通知是否匹配，不执行动作">
-            <SearchCheck size={15} />
-            仅匹配
-          </button>
-          <button className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm disabled:opacity-50" disabled={!props.canRunPreviewActions} onClick={props.onRunTest} title="用当前预览通知测试规则">
-            <Play size={15} />
+          <button className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm disabled:opacity-50" disabled={!props.canRunPreviewActions} onClick={props.onRunTest} title="安全测试：检查匹配并预览变量替换后的动作参数，不会执行动作">
+            <FlaskConical size={15} />
             测试
           </button>
           <button className="inline-flex h-8 items-center gap-2 rounded-md bg-ink px-3 text-sm text-white" onClick={props.onSave} title="保存规则">
@@ -371,8 +379,155 @@ export function RuleEditor(props: {
           </div>
         </Tabs.Content>
       </Tabs.Root>
+      {props.testReport ? (
+        <TestReportPanel report={props.testReport} onExecute={props.onRunExecute} onClose={props.onCloseTestReport} />
+      ) : null}
     </section>
   );
+}
+
+function TestReportPanel(props: { report: RuleTestReport; onExecute: () => void; onClose: () => void }) {
+  const { report } = props;
+  // 与当前 report 绑定的确认状态：报告一旦变化，确认自动失效。
+  const [armedFor, setArmedFor] = useState<RuleTestReport | null>(null);
+  const armed = armedFor === report;
+  const matched = report.kind === "dry" ? report.report.explanation.matched : true;
+  return (
+    <div className="shrink-0 border-t border-border bg-muted/40">
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <FlaskConical size={15} className="text-subdued" />
+          {report.kind === "dry" ? "测试结果（干跑，未执行动作）" : "测试结果（已真实执行）"}
+        </div>
+        <div className="flex items-center gap-2">
+          {report.kind === "dry" ? (
+            armed ? (
+              <button
+                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs text-white"
+                onClick={() => {
+                  setArmedFor(null);
+                  props.onExecute();
+                }}
+              >
+                <Play size={13} />
+                确认执行（有真实副作用）
+              </button>
+            ) : (
+              <button
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-white px-2.5 text-xs disabled:opacity-50"
+                disabled={!matched || !report.report.actions.length}
+                title={matched ? "真实运行动作：脚本、HTTP 请求等会实际执行" : "当前通知未命中规则，无法执行"}
+                onClick={() => setArmedFor(report)}
+              >
+                <Play size={13} />
+                真实执行动作
+              </button>
+            )
+          ) : null}
+          <button className="grid h-7 w-7 place-items-center rounded-md border border-border bg-white" onClick={props.onClose} aria-label="关闭测试结果">
+            <X size={13} />
+          </button>
+        </div>
+      </div>
+      <div className="scrollbar max-h-72 overflow-auto px-3 pb-3">
+        {report.kind === "dry" ? (
+          <div className="grid gap-3">
+            <ExplanationBlock explanation={report.report.explanation} />
+            {report.report.actions.length ? (
+              <div className="grid gap-2">
+                <div className="text-xs font-medium text-subdued">动作预览（变量已替换，尚未执行）</div>
+                {report.report.actions.map((action, index) => (
+                  <div key={index} className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
+                    <div className="text-xs font-medium">#{index + 1} {actionTypeLabel(action.actionType)}</div>
+                    {action.parameters.map((parameter) => (
+                      <div key={parameter.name} className="grid grid-cols-[140px_minmax(0,1fr)] gap-2 text-[11px]">
+                        <div className="truncate font-mono text-subdued">{parameter.name}</div>
+                        <div className="whitespace-pre-wrap break-words text-slate-700">{parameter.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-subdued">该规则没有配置动作</div>
+            )}
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            {report.executions.map((execution, index) => (
+              <ExecutionRow key={index} execution={execution} index={index} />
+            ))}
+            {!report.executions.length ? <div className="text-xs text-subdued">没有可执行的动作</div> : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExplanationBlock({ explanation }: { explanation: MatchExplanation }) {
+  const operatorLabelFor = (value: string) => operators.find(([key]) => key === value)?.[1] ?? value;
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-white px-3 py-2">
+      <div className="flex items-center gap-2 text-xs">
+        {explanation.matched ? <CheckCircle2 size={14} className="text-accent" /> : <XCircle size={14} className="text-red-600" />}
+        <span className={explanation.matched ? "font-medium text-accent" : "font-medium text-red-600"}>{explanation.message}</span>
+      </div>
+      <div className="flex flex-wrap gap-2 text-[11px] text-subdued">
+        <PassChip label="应用" ok={explanation.appMatched} />
+        <PassChip label="时间" ok={explanation.timeMatched} />
+        <span className="rounded-full bg-muted px-2 py-0.5">变量 {explanation.variableCount} 个</span>
+      </div>
+      {explanation.conditions.length ? (
+        <div className="grid gap-1">
+          {explanation.conditions.map((condition, index) => (
+            <div key={index} className="grid grid-cols-[16px_minmax(0,1fr)] items-start gap-2 text-[11px]">
+              {condition.matched ? <CheckCircle2 size={13} className="mt-0.5 text-accent" /> : <XCircle size={13} className="mt-0.5 text-red-600" />}
+              <div className="min-w-0">
+                <span className="font-mono">{condition.variableName}</span>
+                <span className="text-subdued"> {operatorLabelFor(condition.operatorType)} </span>
+                {condition.expectedValue ? <span className="font-mono">{condition.expectedValue}</span> : null}
+                <span className="text-subdued">，实际值：</span>
+                <span className="break-all">{shortConditionValue(condition.actualValue)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ExecutionRow({ execution, index }: { execution: ActionExecution; index: number }) {
+  return (
+    <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <div className="flex min-w-0 items-center gap-2">
+          {execution.success ? <CheckCircle2 size={14} className="text-accent" /> : <XCircle size={14} className="text-red-600" />}
+          <span className="font-medium">#{index + 1} {actionTypeLabel(execution.actionType)}</span>
+        </div>
+        <span className="shrink-0 text-subdued">{execution.durationMs}ms · 尝试 {execution.attemptCount}</span>
+      </div>
+      <div className={`text-[11px] ${execution.success ? "text-slate-600" : "text-red-600"}`}>{execution.message}</div>
+      {execution.output ? (
+        <pre className="scrollbar max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-2 text-[11px] text-slate-700">{execution.output}</pre>
+      ) : null}
+    </div>
+  );
+}
+
+function PassChip({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 ${ok ? "bg-emerald-50 text-accent" : "bg-red-50 text-red-600"}`}>
+      {label}{ok ? "通过" : "未通过"}
+    </span>
+  );
+}
+
+function shortConditionValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "（空）";
+  return trimmed.length > 160 ? `${trimmed.slice(0, 160)}…` : trimmed;
 }
 
 function ActionEditor(props: {
@@ -473,28 +628,33 @@ function ActionEditor(props: {
       {isScriptAction ? (
         <div className="grid gap-2">
           {action.type === "run_shell" ? (
-            <div className="grid gap-2 min-[1180px]:grid-cols-[130px_180px_minmax(0,1fr)]">
-              <Field label="Shell">
-                <select className="input" value={p.shell ?? "bash"} onChange={(event) => props.updateActionParam(index, "shell", event.target.value)}>
-                  <option value="bash">bash</option>
-                  <option value="zsh">zsh</option>
-                </select>
-              </Field>
-              <Field label="模式">
-                <select className="input" value={p.shell_mode ?? "standard"} onChange={(event) => props.updateActionParam(index, "shell_mode", event.target.value)}>
-                  <option value="standard">标准</option>
-                  <option value="login">登录</option>
-                  <option value="interactive">交互</option>
-                  <option value="login_interactive">登录 + 交互</option>
-                </select>
-              </Field>
-              <div className="flex items-end justify-end">
-                <button className="button-secondary h-9" onClick={selectScriptFile} disabled={choosingScript}>
-                  <FileCode2 size={14} />
-                  选择脚本
-                </button>
+            <>
+              <div className="grid gap-2 min-[1180px]:grid-cols-[130px_180px_minmax(0,1fr)]">
+                <Field label="Shell">
+                  <select className="input" value={p.shell ?? "bash"} onChange={(event) => props.updateActionParam(index, "shell", event.target.value)}>
+                    <option value="bash">bash</option>
+                    <option value="zsh">zsh</option>
+                  </select>
+                </Field>
+                <Field label="模式">
+                  <select className="input" value={p.shell_mode ?? "standard"} onChange={(event) => props.updateActionParam(index, "shell_mode", event.target.value)}>
+                    <option value="standard">标准</option>
+                    <option value="login">登录（推荐）</option>
+                    <option value="interactive">交互</option>
+                    <option value="login_interactive">登录 + 交互</option>
+                  </select>
+                </Field>
+                <div className="flex items-end justify-end">
+                  <button className="button-secondary h-9" onClick={selectScriptFile} disabled={choosingScript}>
+                    <FileCode2 size={14} />
+                    选择脚本
+                  </button>
+                </div>
               </div>
-            </div>
+              <p className="m-0 text-[11px] leading-relaxed text-subdued">
+                {shellModeHints[p.shell_mode ?? "standard"] ?? shellModeHints.standard}
+              </p>
+            </>
           ) : (
             <div className="flex justify-end">
               <button className="button-secondary h-9" onClick={selectScriptFile} disabled={choosingScript}>
@@ -654,7 +814,7 @@ function defaultParameters(type: string): Record<string, string> {
     case "open_url": return { url: "{{url}}" };
     case "send_notification": return { title: "{{title}}", body: "{{body}}" };
     case "http_request": return { method: "GET", url: "", retry_count: "0", retry_interval_seconds: "1" };
-    case "run_shell": return { shell: "bash", shell_mode: "standard", script: "", timeout_seconds: "60" };
+    case "run_shell": return { shell: "bash", shell_mode: "login", script: "", timeout_seconds: "60" };
     case "run_javascript": return { code: "", timeout_seconds: "60" };
     case "run_applescript":
     case "run_python": return { script: "", timeout_seconds: "60" };

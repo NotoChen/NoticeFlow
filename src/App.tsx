@@ -10,6 +10,7 @@ import { ConfirmDialog, ContextMenu } from "./components/AppShell";
 import { RuleBoard, RuleCard } from "./features/rules/RuleBoard";
 import { RuleEditor, PreviewPanel } from "./features/rules/RuleEditor";
 import { NotificationsPage } from "./features/notifications/NotificationsPage";
+import { ActionHistoryPage } from "./features/history/ActionHistoryPage";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { useAutoDismissNotice } from "./hooks/useAutoDismissNotice";
 import { useAutomationEvents } from "./hooks/useAutomationEvents";
@@ -51,6 +52,7 @@ import {
   MainView,
   NotificationRefreshOptions,
   RuleEditorTab,
+  RuleTestReport,
   applicationMap,
   cloneRule,
   emptyApplicationList,
@@ -93,6 +95,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editorTab, setEditorTab] = useState<RuleEditorTab>("basic");
+  const [testReport, setTestReport] = useState<RuleTestReport | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [editingIsDirty, setEditingIsDirty] = useState(false);
   const rulesRef = useRef<AutomationRule[]>([]);
@@ -388,7 +391,6 @@ export default function App() {
     activeView,
     settingsInfo,
     updateSettingsInfo,
-    loadActionHistory,
     loadSettingsMaintenance,
     setError,
   });
@@ -514,12 +516,12 @@ export default function App() {
     setEditingIsDirty,
   });
 
-  const { runMatchOnly, runTest } = useRuleTestActions({
+  const { runTest, runExecute } = useRuleTestActions({
     editingRule,
     previewRecordId,
     editingIsDirty,
-    setStatus,
     setEditorTab,
+    setTestReport,
     setNotice,
     setError,
     loadActionHistory,
@@ -527,6 +529,19 @@ export default function App() {
   });
 
   const draggingRule = dragging ? rules.find((rule) => rule.id === dragging.id) : null;
+
+  // 测试报告与当前编辑上下文绑定：切换规则、样本或离开编辑器后即失效。
+  useEffect(() => {
+    setTestReport(null);
+  }, [editingRule?.id, previewRecordId]);
+  useEffect(() => {
+    if (activeView !== "editor") setTestReport(null);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (activeView !== "history") return;
+    loadActionHistory().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [activeView, loadActionHistory]);
 
   return (
     <main className="flex h-full min-h-0 flex-col bg-[#f5f7f8] text-ink">
@@ -570,6 +585,7 @@ export default function App() {
             createRule={createRule}
             refreshAll={refreshAll}
             openSettings={() => navigateTo("settings")}
+            openHistory={() => navigateTo("history")}
             selectRule={selectRule}
             toggleRule={toggleRule}
             startDrag={startDrag}
@@ -598,9 +614,11 @@ export default function App() {
               updateActionParam={updateActionParam}
               isDirty={editingIsDirty}
               canRunPreviewActions={!!previewRecordId}
+              testReport={testReport}
               onSave={() => saveEditingRule()}
-              onRunMatchOnly={runMatchOnly}
               onRunTest={runTest}
+              onRunExecute={runExecute}
+              onCloseTestReport={() => setTestReport(null)}
               onBack={leaveEditor}
             />
             <PreviewPanel
@@ -639,6 +657,19 @@ export default function App() {
           />
         </div>
 
+        <div className={activeView === "history" ? "h-full min-h-0" : "hidden h-full min-h-0"}>
+          <ActionHistoryPage
+            items={activeView === "history" ? actionHistoryItems : []}
+            rules={rules}
+            loading={loading}
+            refresh={() => {
+              loadActionHistory().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+            }}
+            clearHistory={clearHistory}
+            onBack={() => navigateTo("home")}
+          />
+        </div>
+
         <div className={activeView === "settings" ? "h-full min-h-0" : "hidden h-full min-h-0"}>
           <MemoSettingsPanel
             info={activeView === "settings" ? settingsInfo : null}
@@ -648,7 +679,6 @@ export default function App() {
             ruleCount={activeView === "settings" ? rules.length : 0}
             notificationCount={activeView === "settings" ? notifications.length : 0}
             actionQueue={activeView === "settings" ? actionQueueInfo : null}
-            actionHistory={activeView === "settings" ? actionHistoryItems : []}
             archiveStats={activeView === "settings" ? archiveStatsInfo : null}
             systemDeleteAudit={activeView === "settings" ? systemDeleteAuditItems : []}
             refresh={refreshAll}
@@ -656,7 +686,6 @@ export default function App() {
             revealPath={revealPath}
             openFullDiskAccessSettings={openFullDiskAccessSettings}
             restoreHiddenNotifications={restoreHiddenNotifications}
-            clearActionHistory={clearHistory}
             compactArchive={compactArchiveData}
             pruneArchive={pruneArchiveData}
             onSaved={handleSettingsSaved}

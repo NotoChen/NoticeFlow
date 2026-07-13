@@ -1,5 +1,6 @@
 use crate::rules::ActionConfig;
 use crate::variables::replace_variables;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Read;
@@ -16,28 +17,63 @@ const DEFAULT_ACTION_TIMEOUT_SECONDS: u64 = 30;
 const MAX_ACTION_TIMEOUT_SECONDS: u64 = 300;
 const MAX_ACTION_OUTPUT_LOG_BYTES: usize = 16 * 1024;
 const MAX_ACTION_OUTPUT_FILE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_ACTION_OUTPUT_SNIPPET_BYTES: usize = 8 * 1024;
+const MAX_DRY_RUN_VALUE_CHARS: usize = 600;
 const ACTION_OUTPUT_FILE_PREFIX: &str = "noticeflow-action-";
 const ACTION_OUTPUT_FILE_SUFFIX: &str = ".log";
 const STALE_ACTION_OUTPUT_AGE: Duration = Duration::from_secs(60 * 60 * 24);
 static STALE_ACTION_OUTPUT_CLEANUP: OnceLock<()> = OnceLock::new();
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionExecution {
     pub action_type: String,
     pub success: bool,
     pub message: String,
-    pub duration_ms: u128,
+    pub output: Option<String>,
+    pub duration_ms: u64,
     pub attempt_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionDryRun {
+    pub action_type: String,
+    pub parameters: Vec<DryRunParameter>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DryRunParameter {
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Clone, Debug)]
 struct CommandOutput {
     stdout: String,
+    stderr: String,
+}
+
+#[derive(Clone, Debug)]
+struct ActionOutcome {
+    message: String,
+    output: Option<String>,
+}
+
+impl ActionOutcome {
+    fn plain(message: String) -> Self {
+        Self {
+            message,
+            output: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 struct ActionRunSuccess {
     message: String,
+    output: Option<String>,
     attempt_count: u32,
 }
 
@@ -56,12 +92,13 @@ pub fn run_actions_detailed(
         .map(|action| {
             let started_at = Instant::now();
             let result = run_action_with_details(action, variables);
-            let duration_ms = started_at.elapsed().as_millis();
+            let duration_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
             match result {
                 Ok(success) => ActionExecution {
                     action_type: action.action_type.clone(),
                     success: true,
                     message: success.message,
+                    output: success.output,
                     duration_ms,
                     attempt_count: success.attempt_count.max(1),
                 },
@@ -69,12 +106,43 @@ pub fn run_actions_detailed(
                     action_type: action.action_type.clone(),
                     success: false,
                     message: format!("动作失败：{}", failure.message),
+                    output: None,
                     duration_ms,
                     attempt_count: failure.attempt_count.max(1),
                 },
             }
         })
         .collect()
+}
+
+/// 只做变量替换，不执行任何动作；用于测试前预览实际会执行的内容。
+pub fn dry_run_actions(
+    actions: &[ActionConfig],
+    variables: &BTreeMap<String, String>,
+) -> Vec<ActionDryRun> {
+    actions
+        .iter()
+        .map(|action| ActionDryRun {
+            action_type: action.action_type.clone(),
+            parameters: action
+                .parameters
+                .iter()
+                .filter(|(_, value)| !value.trim().is_empty())
+                .map(|(name, value)| DryRunParameter {
+                    name: name.clone(),
+                    value: truncate_display_value(&replace_variables(value, variables)),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn truncate_display_value(value: &str) -> String {
+    if value.chars().count() <= MAX_DRY_RUN_VALUE_CHARS {
+        return value.to_string();
+    }
+    let truncated = value.chars().take(MAX_DRY_RUN_VALUE_CHARS).collect::<String>();
+    format!("{truncated}…（已截断）")
 }
 
 fn run_action_with_details(
@@ -85,8 +153,9 @@ fn run_action_with_details(
         return http_request(action, variables);
     }
     run_action_inner(action, variables)
-        .map(|message| ActionRunSuccess {
-            message,
+        .map(|outcome| ActionRunSuccess {
+            message: outcome.message,
+            output: outcome.output,
             attempt_count: 1,
         })
         .map_err(|message| ActionRunFailure {
@@ -98,9 +167,9 @@ fn run_action_with_details(
 fn run_action_inner(
     action: &ActionConfig,
     variables: &BTreeMap<String, String>,
-) -> Result<String, String> {
+) -> Result<ActionOutcome, String> {
     match action.action_type.as_str() {
-        "open_url" => open_url(action, variables),
+        "open_url" => open_url(action, variables).map(ActionOutcome::plain),
         "run_shell" => run_shell(action, variables),
         "run_javascript" => run_process_script(
             "/usr/bin/osascript",
@@ -119,9 +188,9 @@ fn run_action_inner(
             variables,
             "AppleScript",
         ),
-        "open_app" => open_app(action, variables),
-        "activate_app" => open_app(action, variables),
-        "send_notification" => send_notification(action, variables),
+        "open_app" => open_app(action, variables).map(ActionOutcome::plain),
+        "activate_app" => open_app(action, variables).map(ActionOutcome::plain),
+        "send_notification" => send_notification(action, variables).map(ActionOutcome::plain),
         other => Err(format!("未知动作类型：{other}")),
     }
 }
@@ -129,7 +198,7 @@ fn run_action_inner(
 fn run_shell(
     action: &ActionConfig,
     variables: &BTreeMap<String, String>,
-) -> Result<String, String> {
+) -> Result<ActionOutcome, String> {
     let executable = shell_executable(action)?;
     let args = shell_args(action)?;
     run_process_script(executable, &args, "script", action, variables, "Shell")
@@ -301,6 +370,7 @@ fn http_request(
                 }
                 return Ok(ActionRunSuccess {
                     message: format!("HTTP 请求完成：{method} {url}"),
+                    output: output_snippet(&output.stdout, &output.stderr),
                     attempt_count,
                 });
             }
@@ -363,7 +433,7 @@ fn http_request_command(
 fn run_python(
     action: &ActionConfig,
     variables: &BTreeMap<String, String>,
-) -> Result<String, String> {
+) -> Result<ActionOutcome, String> {
     let python = action
         .parameters
         .get("python_path")
@@ -379,7 +449,7 @@ fn run_process_script(
     action: &ActionConfig,
     variables: &BTreeMap<String, String>,
     label: &str,
-) -> Result<String, String> {
+) -> Result<ActionOutcome, String> {
     let script = action
         .parameters
         .get(parameter_key)
@@ -389,8 +459,36 @@ fn run_process_script(
     command.args(prefix_args);
     command.arg(script);
     configure_process(&mut command, action, variables)?;
-    run_command(command, label, action_timeout(action))?;
-    Ok(format!("{label} 执行完成"))
+    let output = run_command(command, label, action_timeout(action))?;
+    Ok(ActionOutcome {
+        message: format!("{label} 执行完成"),
+        output: output_snippet(&output.stdout, &output.stderr),
+    })
+}
+
+/// 把 stdout/stderr 整理成可展示、可入库的片段；两者都为空时返回 None。
+fn output_snippet(stdout: &str, stderr: &str) -> Option<String> {
+    let stdout = stdout.trim();
+    let stderr = stderr.trim();
+    let mut sections = Vec::new();
+    if !stdout.is_empty() {
+        sections.push(truncate_output_text(stdout));
+    }
+    if !stderr.is_empty() {
+        sections.push(format!("[stderr]\n{}", truncate_output_text(stderr)));
+    }
+    (!sections.is_empty()).then(|| sections.join("\n\n"))
+}
+
+fn truncate_output_text(text: &str) -> String {
+    if text.len() <= MAX_ACTION_OUTPUT_SNIPPET_BYTES {
+        return text.to_string();
+    }
+    let mut end = MAX_ACTION_OUTPUT_SNIPPET_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n…（输出已截断）", &text[..end])
 }
 
 fn configure_process(
@@ -497,7 +595,7 @@ fn run_command(
     let stdout = read_and_remove_output(&stdout_path);
     let stderr = read_and_remove_output(&stderr_path);
     if status.success() {
-        Ok(CommandOutput { stdout })
+        Ok(CommandOutput { stdout, stderr })
     } else {
         Err(format!(
             "{label} 退出码 {:?}：{}{}",
@@ -741,6 +839,69 @@ mod tests {
         parameters.insert("shell_mode".to_string(), "login_interactive".to_string());
         action.parameters = parameters;
         assert_eq!(shell_args(&action).unwrap(), vec!["-l", "-i", "-c"]);
+    }
+
+    #[test]
+    fn successful_script_execution_captures_stdout_and_stderr() {
+        let action = ActionConfig {
+            action_type: "run_shell".to_string(),
+            parameters: BTreeMap::from([(
+                "script".to_string(),
+                "echo hello-stdout; echo hello-stderr >&2".to_string(),
+            )]),
+        };
+        let executions = run_actions_detailed(&[action], &BTreeMap::new());
+
+        assert_eq!(executions.len(), 1);
+        assert!(executions[0].success);
+        let output = executions[0].output.as_deref().expect("output captured");
+        assert!(output.contains("hello-stdout"));
+        assert!(output.contains("[stderr]"));
+        assert!(output.contains("hello-stderr"));
+    }
+
+    #[test]
+    fn output_snippet_skips_empty_and_truncates_large_text() {
+        assert_eq!(output_snippet("", "  \n"), None);
+        assert_eq!(output_snippet("ok", "").as_deref(), Some("ok"));
+
+        let large = "x".repeat(MAX_ACTION_OUTPUT_SNIPPET_BYTES + 100);
+        let snippet = output_snippet(&large, "").expect("snippet");
+        assert!(snippet.contains("输出已截断"));
+        assert!(snippet.len() < large.len());
+    }
+
+    #[test]
+    fn dry_run_actions_resolves_variables_without_executing() {
+        let marker = temp_output_path("dry-run-marker");
+        let _ = fs::remove_file(&marker);
+        let action = ActionConfig {
+            action_type: "run_shell".to_string(),
+            parameters: BTreeMap::from([
+                (
+                    "script".to_string(),
+                    format!("echo {{{{title}}}} > {}", marker.to_string_lossy()),
+                ),
+                ("empty".to_string(), "  ".to_string()),
+            ]),
+        };
+        let variables = BTreeMap::from([("title".to_string(), "构建完成".to_string())]);
+
+        let previews = dry_run_actions(&[action], &variables);
+
+        assert_eq!(previews.len(), 1);
+        assert_eq!(previews[0].action_type, "run_shell");
+        let script = previews[0]
+            .parameters
+            .iter()
+            .find(|item| item.name == "script")
+            .expect("script param");
+        assert!(script.value.contains("构建完成"));
+        assert!(
+            !previews[0].parameters.iter().any(|item| item.name == "empty"),
+            "blank parameters should be hidden from preview"
+        );
+        assert!(!marker.exists(), "dry run must not execute the script");
     }
 
     #[test]

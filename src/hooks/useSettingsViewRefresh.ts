@@ -7,7 +7,6 @@ type UseSettingsViewRefreshOptions = {
   activeView: MainView;
   settingsInfo: SettingsInfo | null;
   updateSettingsInfo: (settingsInfo: SettingsInfo) => void;
-  loadActionHistory: () => Promise<void>;
   loadSettingsMaintenance: () => Promise<void>;
   setError: (message: string) => void;
 };
@@ -16,7 +15,6 @@ export function useSettingsViewRefresh({
   activeView,
   settingsInfo,
   updateSettingsInfo,
-  loadActionHistory,
   loadSettingsMaintenance,
   setError,
 }: UseSettingsViewRefreshOptions) {
@@ -31,7 +29,6 @@ export function useSettingsViewRefresh({
 
   useEffect(() => {
     if (activeView !== "settings") return;
-    loadActionHistory().catch((err) => setError(err instanceof Error ? err.message : String(err)));
     loadSettingsMaintenance().catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, [activeView, loadActionHistory, loadSettingsMaintenance, setError]);
+  }, [activeView, loadSettingsMaintenance, setError]);
 }
