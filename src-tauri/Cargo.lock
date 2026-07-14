@@ -1932,6 +1932,7 @@ dependencies = [
  "chrono",
  "dirs",
  "libc",
+ "objc2-foundation",
  "plist",
  "regex",
  "rusqlite",

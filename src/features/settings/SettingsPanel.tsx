@@ -337,10 +337,10 @@ export function SettingsPanel(props: {
                   <div key={bundleId} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                     <AppIcon app={app} bundleId={bundleId} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{app?.name || bundleId}</div>
+                      <div className="truncate text-sm font-medium">{app?.localizedName || app?.name || bundleId}</div>
                       <div className="truncate text-[11px] text-subdued">{bundleId}</div>
                     </div>
-                    <button className="grid h-7 w-7 place-items-center rounded-md border border-border text-subdued hover:text-red-600" onClick={() => removeIgnoredApp(bundleId)} aria-label={`移除忽略应用 ${app?.name || bundleId}`} title="移除">
+                    <button className="grid h-7 w-7 place-items-center rounded-md border border-border text-subdued hover:text-red-600" onClick={() => removeIgnoredApp(bundleId)} aria-label={`移除忽略应用 ${app?.localizedName || app?.name || bundleId}`} title="移除">
                       <X size={14} />
                     </button>
                   </div>

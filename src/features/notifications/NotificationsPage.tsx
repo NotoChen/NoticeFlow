@@ -232,7 +232,7 @@ function NotificationRow({ item, app }: { item: NotificationRecord; app?: Applic
           <span className="truncate text-sm font-medium">{item.title || "(无标题)"}</span>
           <span className="shrink-0 text-xs text-subdued">{formatNotificationTime(item.deliveredAt)}</span>
         </div>
-        <div className="mt-1 truncate text-xs text-subdued">{app?.name || item.appName || item.appIdentifier}</div>
+        <div className="mt-1 truncate text-xs text-subdued">{app?.localizedName || app?.name || item.appName || item.appIdentifier}</div>
         <div className="mt-1 line-clamp-2 text-sm text-slate-600">{item.body}</div>
       </div>
     </div>
@@ -261,7 +261,7 @@ function NotificationDetail({
         <AppIcon app={app} bundleId={item.appIdentifier} />
         <div className="min-w-0">
           <div className="text-base font-semibold">{item.title || "(无标题)"}</div>
-          <div className="mt-1 text-xs text-subdued">{app?.name || item.appName || item.appIdentifier}</div>
+          <div className="mt-1 text-xs text-subdued">{app?.localizedName || app?.name || item.appName || item.appIdentifier}</div>
         </div>
       </div>
       <ReadonlyField label="时间" value={formatNotificationTime(item.deliveredAt)} />

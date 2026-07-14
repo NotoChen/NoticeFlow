@@ -12,6 +12,7 @@ export type NotificationRecord = {
 
 export type ApplicationInfo = {
   name: string;
+  localizedName?: string;
   bundleId: string;
   path: string;
   iconPath?: string;

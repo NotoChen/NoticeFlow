@@ -5,11 +5,12 @@ import {
   notificationSearchIndex,
 } from "../lib/appModel";
 import type { MainView } from "../lib/appModel";
-import type { NotificationRecord } from "../lib/tauri";
+import type { ApplicationInfo, NotificationRecord } from "../lib/tauri";
 
 type UseNotificationCenterOptions = {
   activeView: MainView;
   notifications: NotificationRecord[];
+  appById: Map<string, ApplicationInfo>;
   selectedRecordId: number | null;
   setSelectedRecordId: (recordId: number | null) => void;
 };
@@ -17,6 +18,7 @@ type UseNotificationCenterOptions = {
 export function useNotificationCenter({
   activeView,
   notifications,
+  appById,
   selectedRecordId,
   setSelectedRecordId,
 }: UseNotificationCenterOptions) {
@@ -27,7 +29,10 @@ export function useNotificationCenter({
     () => newestNotifications(notifications),
     [notifications],
   );
-  const notificationSearchItems = useMemo(() => notificationSearchIndex(notifications), [notifications]);
+  const notificationSearchItems = useMemo(
+    () => notificationSearchIndex(notifications, appById),
+    [notifications, appById],
+  );
   const notificationCenterItems = useMemo(
     () => filterNotifications(notificationsByNewest, notificationSearchItems, notificationQuery, notificationAppFilter),
     [notificationAppFilter, notificationQuery, notificationSearchItems, notificationsByNewest],

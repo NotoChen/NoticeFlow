@@ -96,10 +96,17 @@ export function newestNotifications(notifications: NotificationRecord[]) {
   });
 }
 
-export function notificationSearchIndex(notifications: NotificationRecord[]) {
+export function notificationSearchIndex(
+  notifications: NotificationRecord[],
+  appById?: Map<string, ApplicationInfo>,
+) {
   const index = new Map<number, string>();
   for (const item of notifications) {
-    index.set(item.id, notificationSearchText(item));
+    // 通知记录里的 appName 往往就是 bundle id，把应用目录中的
+    // 英文名和本地化名（如钉钉）一并纳入索引，让两种叫法都能搜到。
+    const app = appById?.get(item.appIdentifier.toLowerCase());
+    const appNames = app ? `\n${app.name}\n${app.localizedName ?? ""}`.toLowerCase() : "";
+    index.set(item.id, notificationSearchText(item) + appNames);
   }
   return index;
 }
@@ -159,6 +166,7 @@ export function sameApplicationList(left: ApplicationInfo[], right: ApplicationI
     return (
       item.bundleId === other.bundleId &&
       item.name === other.name &&
+      item.localizedName === other.localizedName &&
       item.path === other.path &&
       item.iconPath === other.iconPath &&
       item.iconCacheKey === other.iconCacheKey &&
@@ -169,7 +177,7 @@ export function sameApplicationList(left: ApplicationInfo[], right: ApplicationI
 
 function applicationCacheSignature(apps: ApplicationInfo[]) {
   return apps
-    .map((app) => [app.bundleId, app.name, app.path, app.iconPath ?? "", app.iconCacheKey ?? ""].join("\u001f"))
+    .map((app) => [app.bundleId, app.name, app.localizedName ?? "", app.path, app.iconPath ?? "", app.iconCacheKey ?? ""].join("\u001f"))
     .join("\u001e");
 }
 
@@ -178,10 +186,12 @@ function normalizeApplicationForCache(app: ApplicationInfo): ApplicationInfo | n
   const bundleId = String(app.bundleId ?? "").trim();
   const path = String(app.path ?? "").trim();
   if (!name || !bundleId || !path) return null;
+  const localizedName = String(app.localizedName ?? "").trim();
   const iconPath = String(app.iconPath ?? "").trim();
   const iconCacheKey = String(app.iconCacheKey ?? "").trim();
   return {
     name,
+    localizedName: localizedName || undefined,
     bundleId,
     path,
     iconPath: iconPath || undefined,

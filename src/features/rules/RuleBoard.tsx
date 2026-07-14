@@ -136,7 +136,7 @@ export function RuleCard({
       <div className="mb-4 flex items-start gap-3">
         <AppIcon app={app} bundleId={appId} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs text-subdued">{app?.name || appId || "未选择应用"}</div>
+          <div className="truncate text-xs text-subdued">{app?.localizedName || app?.name || appId || "未选择应用"}</div>
           <div className="mt-1 line-clamp-2 text-base font-semibold">{rule.name || "未命名规则"}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

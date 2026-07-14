@@ -153,6 +153,7 @@ export default function App() {
   } = useNotificationCenter({
     activeView,
     notifications,
+    appById,
     selectedRecordId: notificationRecordId,
     setSelectedRecordId: setNotificationRecordId,
   });

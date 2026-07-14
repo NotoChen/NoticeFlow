@@ -37,7 +37,7 @@ function appPickerRows(apps: ApplicationInfo[]) {
   const rows = apps.map((app) => ({
     app,
     bundleKey: app.bundleId.toLowerCase(),
-    searchText: `${app.name}\n${app.bundleId}`.toLowerCase(),
+    searchText: `${app.name}\n${app.localizedName ?? ""}\n${app.bundleId}`.toLowerCase(),
   }));
   appPickerRowsCache.set(apps, rows);
   return rows;
@@ -72,7 +72,7 @@ export function AppPicker(props: {
       .slice(0, appPickerSearchLimit);
   }, [appRows, open, props.disabled, text]);
   const fallbackValue = normalizedValue || (props.allowEmpty ? props.emptyLabel ?? "全部应用" : "");
-  const displayValue = open && !props.disabled ? search : selected ? selected.name : fallbackValue;
+  const displayValue = open && !props.disabled ? search : selected ? selected.localizedName || selected.name : fallbackValue;
 
   return (
     <div className="relative">
@@ -124,8 +124,10 @@ export function AppPicker(props: {
             >
               <AppIcon app={app} bundleId={app.bundleId} size="sm" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{app.name}</span>
-                <span className="block truncate text-[11px] text-subdued">{app.bundleId}</span>
+                <span className="block truncate text-sm">{app.localizedName || app.name}</span>
+                <span className="block truncate text-[11px] text-subdued">
+                  {app.localizedName && app.localizedName !== app.name ? `${app.name} · ${app.bundleId}` : app.bundleId}
+                </span>
               </span>
             </button>
           ))}
@@ -145,7 +147,7 @@ export const AppIcon = memo(function AppIcon({ app, bundleId, size = "md" }: { a
   const iconMemoryKey = iconPath ? `${iconPath}#${iconCacheKey || "unknown"}` : "";
   const initialSrc = iconDataUrl || (iconMemoryKey ? cachedIconSrc(iconMemoryKey) : "") || (bundleKey ? cachedIconSrc(bundleKey) : "") || "";
   const [src, setSrc] = useState(initialSrc);
-  const label = app?.name || bundleId || "A";
+  const label = app?.localizedName || app?.name || bundleId || "A";
   const dimension = size === "sm" ? "h-6 w-6" : "h-8 w-8";
 
   useEffect(() => {

@@ -21,11 +21,19 @@ const MAX_ICON_CACHE_AGE: Duration = Duration::from_secs(60 * 60 * 24 * 45);
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationInfo {
     pub name: String,
+    /// Finder 展示的本地化名称（如钉钉），仅在与 `name` 不同时填充。
+    pub localized_name: Option<String>,
     pub bundle_id: String,
     pub path: String,
     pub icon_path: Option<String>,
     pub icon_cache_key: Option<String>,
     pub icon_data_url: Option<String>,
+}
+
+impl ApplicationInfo {
+    pub fn display_name(&self) -> &str {
+        self.localized_name.as_deref().unwrap_or(&self.name)
+    }
 }
 
 pub fn scan_applications() -> Result<Vec<ApplicationInfo>, Box<dyn Error>> {
@@ -99,9 +107,9 @@ fn application_key(bundle_id: &str) -> String {
 
 fn sort_applications(apps: &mut [ApplicationInfo]) {
     apps.sort_by(|left, right| {
-        left.name
+        left.display_name()
             .to_lowercase()
-            .cmp(&right.name.to_lowercase())
+            .cmp(&right.display_name().to_lowercase())
             .then_with(|| {
                 left.bundle_id
                     .to_lowercase()
@@ -268,6 +276,7 @@ fn read_application(path: &Path) -> Option<ApplicationInfo> {
                 .unwrap_or(&bundle_id)
                 .to_string()
         });
+    let localized_name = finder_display_name(path).filter(|candidate| candidate != &name);
     let icon_path = dictionary
         .get("CFBundleIconFile")
         .and_then(Value::as_string)
@@ -275,12 +284,27 @@ fn read_application(path: &Path) -> Option<ApplicationInfo> {
     let icon_cache_key = icon_path.as_deref().and_then(icon_source_cache_key);
     Some(ApplicationInfo {
         name,
+        localized_name,
         bundle_id,
         path: path.to_string_lossy().to_string(),
         icon_path,
         icon_cache_key,
         icon_data_url: None,
     })
+}
+
+/// 读取 Finder 实际展示的本地化名称（走 NSFileManager，随系统语言返回
+/// InfoPlist.strings 里的翻译，例如 DingTalk -> 钉钉）。
+fn finder_display_name(path: &Path) -> Option<String> {
+    use objc2_foundation::{NSFileManager, NSString};
+
+    let path_str = path.to_str()?;
+    let ns_path = NSString::from_str(path_str);
+    let manager = NSFileManager::defaultManager();
+    let display = manager.displayNameAtPath(&ns_path);
+    let display = display.to_string();
+    let display = display.strip_suffix(".app").unwrap_or(&display).trim();
+    (!display.is_empty()).then(|| display.to_string())
 }
 
 fn is_app_bundle(path: &Path) -> bool {
@@ -329,12 +353,33 @@ mod tests {
     fn app(name: &str, bundle_id: &str, path: &str) -> ApplicationInfo {
         ApplicationInfo {
             name: name.to_string(),
+            localized_name: None,
             bundle_id: bundle_id.to_string(),
             path: path.to_string(),
             icon_path: None,
             icon_cache_key: None,
             icon_data_url: None,
         }
+    }
+
+    #[test]
+    fn display_name_prefers_localized_name() {
+        let mut item = app("DingTalk", "com.alibaba.DingTalk", "/Applications/DingTalk.app");
+        assert_eq!(item.display_name(), "DingTalk");
+        item.localized_name = Some("钉钉".to_string());
+        assert_eq!(item.display_name(), "钉钉");
+    }
+
+    #[test]
+    fn applications_sort_by_localized_display_name() {
+        let mut zulu = app("Zulu", "com.example.zulu", "/Applications/Zulu.app");
+        zulu.localized_name = Some("Aardvark".to_string());
+        let alpha = app("Beta", "com.example.beta", "/Applications/Beta.app");
+        let mut apps = vec![alpha, zulu];
+
+        sort_applications(&mut apps);
+
+        assert_eq!(apps[0].bundle_id, "com.example.zulu");
     }
 
     #[test]
