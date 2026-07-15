@@ -21,7 +21,7 @@ export function RuleBoard(props: {
   createRule: () => void;
   refreshAll: () => void;
   openSettings: () => void;
-  openHistory: () => void;
+  openHistory: (rule: AutomationRule) => void;
   selectRule: (rule: AutomationRule) => void;
   toggleRule: (rule: AutomationRule, enabled: boolean) => void;
   startDrag: (event: PointerEvent, rule: AutomationRule) => void;
@@ -50,9 +50,6 @@ export function RuleBoard(props: {
           </button>
           <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white disabled:opacity-50" disabled={props.loading} onClick={props.refreshAll} aria-label="刷新全部状态" title="刷新全部状态">
             <RefreshCw size={15} className={props.loading ? "animate-spin" : ""} />
-          </button>
-          <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white" onClick={props.openHistory} aria-label="执行历史" title="执行历史">
-            <History size={15} />
           </button>
           <button className="grid h-9 w-9 place-items-center rounded-md border border-border bg-white" onClick={props.openSettings} aria-label="设置" title="设置">
             <Settings size={15} />
@@ -102,6 +99,7 @@ export function RuleBoard(props: {
                   <RuleCard
                     rule={rule}
                     app={app}
+                    onOpenHistory={() => props.openHistory(rule)}
                     onToggle={(enabled) => props.toggleRule(rule, enabled)}
                   />
                 </div>
@@ -122,11 +120,13 @@ export function RuleCard({
   rule,
   app,
   dragging,
+  onOpenHistory,
   onToggle,
 }: {
   rule: AutomationRule;
   app?: ApplicationInfo;
   dragging?: boolean;
+  onOpenHistory?: () => void;
   onToggle?: (enabled: boolean) => void;
 }) {
   const appId = rule.appIdentifiers?.[0] ?? "";
@@ -140,6 +140,22 @@ export function RuleCard({
           <div className="mt-1 line-clamp-2 text-base font-semibold">{rule.name || "未命名规则"}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {onOpenHistory ? (
+            <button
+              type="button"
+              className="grid h-7 w-7 place-items-center rounded-md text-subdued hover:bg-muted hover:text-ink"
+              aria-label={`查看规则 ${rule.name || "未命名规则"} 的执行历史`}
+              title="查看执行历史"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenHistory();
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <History size={14} />
+            </button>
+          ) : null}
           {onToggle ? (
             <span
               className="inline-flex"

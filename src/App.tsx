@@ -79,6 +79,7 @@ type ContextMenuState = {
 
 export default function App() {
   const [activeView, setActiveView] = useState<MainView>("home");
+  const [historyRuleId, setHistoryRuleId] = useState("");
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
@@ -497,6 +498,11 @@ export default function App() {
     setContextMenu({ rule, x, y });
   }, []);
 
+  const openRuleHistory = useCallback((rule: AutomationRule) => {
+    setHistoryRuleId(rule.id);
+    navigateTo("history");
+  }, [navigateTo]);
+
   const handleSettingsSaved = useCallback((info: SettingsInfo) => {
     setSettingsInfo(info);
     setError("");
@@ -586,7 +592,7 @@ export default function App() {
             createRule={createRule}
             refreshAll={refreshAll}
             openSettings={() => navigateTo("settings")}
-            openHistory={() => navigateTo("history")}
+            openHistory={openRuleHistory}
             selectRule={selectRule}
             toggleRule={toggleRule}
             startDrag={startDrag}
@@ -662,12 +668,16 @@ export default function App() {
           <ActionHistoryPage
             items={activeView === "history" ? actionHistoryItems : []}
             rules={rules}
+            initialRuleId={historyRuleId}
             loading={loading}
             refresh={() => {
               loadActionHistory().catch((err) => setError(err instanceof Error ? err.message : String(err)));
             }}
             clearHistory={clearHistory}
-            onBack={() => navigateTo("home")}
+            onBack={() => {
+              setHistoryRuleId("");
+              navigateTo("home");
+            }}
           />
         </div>
 

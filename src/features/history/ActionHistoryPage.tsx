@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, History, RefreshCw, Trash2 } from "lucide-react";
 import { EmptyBlock } from "../../components/FormBits";
 import {
@@ -17,18 +17,28 @@ const PAGE_SIZE = 60;
 export function ActionHistoryPage(props: {
   items: ActionHistoryEntry[];
   rules: AutomationRule[];
+  initialRuleId?: string;
   loading: boolean;
   refresh: () => void;
   clearHistory: () => Promise<void>;
   onBack: () => void;
 }) {
-  const [ruleFilter, setRuleFilter] = useState("");
+  const [ruleFilter, setRuleFilter] = useState(props.initialRuleId ?? "");
   const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>("all");
   const [originFilter, setOriginFilter] = useState<HistoryOriginFilter>("all");
   const [expandedId, setExpandedId] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [clearError, setClearError] = useState("");
   const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    setRuleFilter(props.initialRuleId ?? "");
+    setStatusFilter("all");
+    setOriginFilter("all");
+    setExpandedId("");
+    setVisibleCount(PAGE_SIZE);
+    setClearError("");
+  }, [props.initialRuleId]);
 
   const filtered = useMemo(
     () => filterActionHistory(props.items, ruleFilter, statusFilter, originFilter),
@@ -81,7 +91,7 @@ export function ActionHistoryPage(props: {
             </button>
             <button className="button-secondary h-9" onClick={runClear} disabled={clearing || !props.items.length}>
               <Trash2 size={14} />
-              清空
+              清空全部
             </button>
           </div>
         </div>
