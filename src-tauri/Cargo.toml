@@ -1,6 +1,6 @@
 [package]
 name = "noticeflow"
-version = "0.2.1"
+version = "0.2.2"
 description = "A local macOS notification automation app built with Tauri."
 authors = ["NotoChen"]
 license = "MIT"

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronDown, ChevronUp, History, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Copy, History, RefreshCw, Trash2 } from "lucide-react";
+import { AnsiOutput } from "../../components/AnsiOutput";
 import { EmptyBlock } from "../../components/FormBits";
 import {
   actionTypeLabel,
@@ -141,7 +142,7 @@ export function ActionHistoryPage(props: {
 function HistoryEntryCard(props: { item: ActionHistoryEntry; expanded: boolean; toggle: () => void }) {
   const { item, expanded } = props;
   const variables = parseVariableSnapshot(item.variablesJson);
-  const hasDetails = Boolean(item.output) || variables.length > 0 || item.message.length > 160;
+  const hasDetails = Boolean(item.output) || Boolean(item.resolvedCommand) || variables.length > 0 || item.message.length > 160;
   return (
     <div className="grid gap-1 rounded-md border border-border bg-white px-3 py-2 shadow-soft">
       <div className="flex items-center justify-between gap-3">
@@ -164,8 +165,24 @@ function HistoryEntryCard(props: { item: ActionHistoryEntry; expanded: boolean; 
         <span className="min-w-0 truncate">{item.notificationTitle || "无标题"}</span>
       </div>
       <div className={`${expanded ? "" : "line-clamp-2"} text-xs text-slate-600`}>{item.message}</div>
+      {expanded && item.resolvedCommand ? (
+        <div className="mt-1 grid gap-1">
+          <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-subdued">
+            <span>实际执行命令</span>
+            <button
+              className="grid h-7 w-7 place-items-center rounded-md border border-border bg-white hover:bg-muted"
+              onClick={() => navigator.clipboard?.writeText(item.resolvedCommand ?? "")}
+              aria-label="复制实际执行命令"
+              title="复制"
+            >
+              <Copy size={13} />
+            </button>
+          </div>
+          <pre className="scrollbar max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-2 font-mono text-[11px] leading-5 text-slate-700">{item.resolvedCommand}</pre>
+        </div>
+      ) : null}
       {expanded && item.output ? (
-        <pre className="scrollbar mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-2 text-[11px] text-slate-700">{item.output}</pre>
+        <AnsiOutput value={item.output} />
       ) : null}
       {expanded && variables.length ? (
         <div className="mt-1 grid max-h-56 gap-1 overflow-auto rounded-md border border-border bg-muted p-2">

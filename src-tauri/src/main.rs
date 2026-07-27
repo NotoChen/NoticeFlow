@@ -1122,6 +1122,31 @@ fn osascript_stdout_path(stdout: &[u8]) -> Option<String> {
 }
 
 #[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let url = validate_external_url(&url)?;
+    let status = Command::new("/usr/bin/open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("打开 URL 失败：{error}"))?;
+    if !status.success() {
+        return Err(format!("打开 URL 失败，退出码：{:?}", status.code()));
+    }
+    Ok(())
+}
+
+fn validate_external_url(url: &str) -> Result<&str, String> {
+    let url = url.trim();
+    let normalized = url.to_ascii_lowercase();
+    if url.len() > 8_192
+        || url.chars().any(char::is_whitespace)
+        || !(normalized.starts_with("https://") || normalized.starts_with("http://"))
+    {
+        return Err("只能打开有效的 HTTP(S) URL".to_string());
+    }
+    Ok(url)
+}
+
+#[tauri::command]
 fn match_rule_names_for_notification(
     record_id: i64,
     state: State<AppState>,
@@ -1481,6 +1506,7 @@ fn main() {
             reveal_path,
             choose_data_directory,
             choose_script_file,
+            open_external_url,
             hide_notification,
             clear_hidden_notifications,
             delete_system_notification,
@@ -2625,6 +2651,7 @@ fn record_action_history(
             success: execution.success,
             message: execution.message.clone(),
             output: execution.output.clone(),
+            resolved_command: execution.resolved_command.clone(),
             origin: origin.to_string(),
             duration_ms: execution.duration_ms,
             attempt_count: execution.attempt_count,
@@ -2666,9 +2693,9 @@ mod watcher_tests {
         notification_store_reset_baseline, notification_store_was_reset, osascript_stdout_path,
         rule_automation_block_reason, rule_matches_record_app, rules_for_target_data_directory,
         should_flush_hit_counts, should_rollback_launch_at_login, validate_rule_for_save,
-        validate_rules_for_save, watcher_sleep_duration, AppFilterMode, AutomationRule,
-        NotificationRecordIdentity, AUTOMATION_RESULT_FAILURE_TITLE, AUTOMATION_RESULT_SUBTITLE,
-        AUTOMATION_RESULT_SUCCESS_TITLE, WATCHER_IDLE_INTERVAL,
+        validate_external_url, validate_rules_for_save, watcher_sleep_duration, AppFilterMode,
+        AutomationRule, NotificationRecordIdentity, AUTOMATION_RESULT_FAILURE_TITLE,
+        AUTOMATION_RESULT_SUBTITLE, AUTOMATION_RESULT_SUCCESS_TITLE, WATCHER_IDLE_INTERVAL,
     };
     use crate::notification_db::NotificationRecord;
     use crate::rules::{ActionConfig, MatchCondition};
@@ -2749,6 +2776,16 @@ mod watcher_tests {
             Some("/Users/example/folder /".to_string())
         );
         assert_eq!(osascript_stdout_path(b"\n"), None);
+    }
+
+    #[test]
+    fn external_log_links_only_allow_http_urls() {
+        assert_eq!(
+            validate_external_url(" https://example.com/path?q=1 ").unwrap(),
+            "https://example.com/path?q=1"
+        );
+        assert!(validate_external_url("file:///tmp/private").is_err());
+        assert!(validate_external_url("https://example.com/a\nopen /tmp/nope").is_err());
     }
 
     #[test]

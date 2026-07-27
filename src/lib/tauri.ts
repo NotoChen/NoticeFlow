@@ -119,6 +119,7 @@ export type ActionHistoryEntry = {
   success: boolean;
   message: string;
   output?: string;
+  resolvedCommand?: string;
   origin: "auto" | "test" | string;
   durationMs: number;
   attemptCount: number;

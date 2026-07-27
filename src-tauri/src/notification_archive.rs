@@ -27,6 +27,7 @@ pub struct ActionHistoryEntry {
     pub success: bool,
     pub message: String,
     pub output: Option<String>,
+    pub resolved_command: Option<String>,
     pub origin: String,
     pub duration_ms: u64,
     pub attempt_count: u32,
@@ -300,9 +301,10 @@ pub fn append_action_history(entries: &[ActionHistoryEntry]) -> Result<(), Box<d
                 origin,
                 duration_ms,
                 attempt_count,
-                variables_json
+                variables_json,
+                resolved_command
             )
-            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             "#,
             params![
                 entry.id,
@@ -322,6 +324,7 @@ pub fn append_action_history(entries: &[ActionHistoryEntry]) -> Result<(), Box<d
                 entry.duration_ms as i64,
                 entry.attempt_count as i64,
                 entry.variables_json,
+                entry.resolved_command,
             ],
         )?;
     }
@@ -347,7 +350,7 @@ pub fn recent_action_history(limit: usize) -> Result<Vec<ActionHistoryEntry>, Bo
         r#"
         select id, timestamp, queue_id, rule_id, rule_name, notification_id, notification_title,
                app_identifier, action_index, action_type, success, message, duration_ms,
-               attempt_count, variables_json, output, origin
+               attempt_count, variables_json, output, origin, resolved_command
         from action_history
         order by timestamp desc, rowid desc
         limit ?1
@@ -515,7 +518,8 @@ fn initialize_archive_schema(connection: &Connection) -> Result<(), Box<dyn Erro
             origin text not null default 'auto',
             duration_ms integer not null,
             attempt_count integer not null default 1,
-            variables_json text
+            variables_json text,
+            resolved_command text
         );
         create index if not exists idx_action_history_timestamp on action_history(timestamp);
 
@@ -554,6 +558,7 @@ fn initialize_archive_schema(connection: &Connection) -> Result<(), Box<dyn Erro
     )?;
     ensure_column(connection, "action_history", "variables_json", "text")?;
     ensure_column(connection, "action_history", "output", "text")?;
+    ensure_column(connection, "action_history", "resolved_command", "text")?;
     ensure_column(
         connection,
         "action_history",
@@ -646,6 +651,7 @@ fn action_history_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActionHi
         attempt_count: attempt_count.max(1) as u32,
         variables_json: row.get(14)?,
         output: row.get(15)?,
+        resolved_command: row.get(17)?,
         origin: row
             .get::<_, Option<String>>(16)?
             .filter(|value| !value.trim().is_empty())
@@ -688,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_migration_adds_system_deleted_column() {
+    fn schema_migration_adds_new_archive_columns() {
         let connection = Connection::open_in_memory().expect("in-memory db should open");
         connection
             .execute_batch(
@@ -703,6 +709,25 @@ mod tests {
                     body text not null,
                     hidden integer not null default 0,
                     archived_at text not null
+                );
+                create table action_history (
+                    id text primary key,
+                    timestamp text not null,
+                    queue_id text,
+                    rule_id text not null,
+                    rule_name text not null,
+                    notification_id integer not null,
+                    notification_title text not null,
+                    app_identifier text not null,
+                    action_index integer not null default 0,
+                    action_type text not null,
+                    success integer not null,
+                    message text not null,
+                    output text,
+                    origin text not null default 'auto',
+                    duration_ms integer not null,
+                    attempt_count integer not null default 1,
+                    variables_json text
                 );
                 "#,
             )
@@ -719,6 +744,16 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("columns should parse");
         assert!(columns.contains(&"system_deleted".to_string()));
+
+        let mut statement = connection
+            .prepare("pragma table_info(action_history)")
+            .expect("history table info should be readable");
+        let history_columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("history columns should be listed")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("history columns should parse");
+        assert!(history_columns.contains(&"resolved_command".to_string()));
     }
 
     #[test]

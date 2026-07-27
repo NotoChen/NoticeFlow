@@ -31,6 +31,7 @@ pub struct ActionExecution {
     pub success: bool,
     pub message: String,
     pub output: Option<String>,
+    pub resolved_command: Option<String>,
     pub duration_ms: u64,
     pub attempt_count: u32,
 }
@@ -91,6 +92,7 @@ pub fn run_actions_detailed(
         .iter()
         .map(|action| {
             let started_at = Instant::now();
+            let resolved_command = resolved_shell_command(action, variables);
             let result = run_action_with_details(action, variables);
             let duration_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
             match result {
@@ -99,6 +101,7 @@ pub fn run_actions_detailed(
                     success: true,
                     message: success.message,
                     output: success.output,
+                    resolved_command,
                     duration_ms,
                     attempt_count: success.attempt_count.max(1),
                 },
@@ -107,12 +110,38 @@ pub fn run_actions_detailed(
                     success: false,
                     message: format!("动作失败：{}", failure.message),
                     output: None,
+                    resolved_command,
                     duration_ms,
                     attempt_count: failure.attempt_count.max(1),
                 },
             }
         })
         .collect()
+}
+
+fn resolved_shell_command(
+    action: &ActionConfig,
+    variables: &BTreeMap<String, String>,
+) -> Option<String> {
+    if action.action_type != "run_shell" {
+        return None;
+    }
+    let script = action.parameters.get("script")?;
+    let executable = shell_executable(action)
+        .map(str::to_string)
+        .unwrap_or_else(|error| format!("<{}>", error));
+    let arguments = shell_args(action)
+        .map(|items| items.join(" "))
+        .unwrap_or_else(|error| format!("<{}>", error));
+    let script = replace_variables(script, variables);
+    Some(format!(
+        "{executable} {arguments} {}",
+        shell_quote_argument(&script)
+    ))
+}
+
+fn shell_quote_argument(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 /// 只做变量替换，不执行任何动作；用于测试前预览实际会执行的内容。
@@ -141,7 +170,10 @@ fn truncate_display_value(value: &str) -> String {
     if value.chars().count() <= MAX_DRY_RUN_VALUE_CHARS {
         return value.to_string();
     }
-    let truncated = value.chars().take(MAX_DRY_RUN_VALUE_CHARS).collect::<String>();
+    let truncated = value
+        .chars()
+        .take(MAX_DRY_RUN_VALUE_CHARS)
+        .collect::<String>();
     format!("{truncated}…（已截断）")
 }
 
@@ -861,6 +893,29 @@ mod tests {
     }
 
     #[test]
+    fn shell_execution_captures_resolved_command_and_executor() {
+        let action = ActionConfig {
+            action_type: "run_shell".to_string(),
+            parameters: BTreeMap::from([
+                ("shell".to_string(), "zsh".to_string()),
+                ("shell_mode".to_string(), "login_interactive".to_string()),
+                ("script".to_string(), "printf '%s' '{{url}}'".to_string()),
+            ]),
+        };
+        let variables = BTreeMap::from([(
+            "url".to_string(),
+            "https://example.com/merge_requests/42".to_string(),
+        )]);
+
+        let command = resolved_shell_command(&action, &variables).expect("command should resolve");
+
+        assert!(command.starts_with("/bin/zsh -l -i -c '"));
+        assert!(command.contains("https://example.com/merge_requests/42"));
+        assert!(command.contains("'\"'\"'"));
+        assert!(!command.contains("{{url}}"));
+    }
+
+    #[test]
     fn output_snippet_skips_empty_and_truncates_large_text() {
         assert_eq!(output_snippet("", "  \n"), None);
         assert_eq!(output_snippet("ok", "").as_deref(), Some("ok"));
@@ -898,7 +953,10 @@ mod tests {
             .expect("script param");
         assert!(script.value.contains("构建完成"));
         assert!(
-            !previews[0].parameters.iter().any(|item| item.name == "empty"),
+            !previews[0]
+                .parameters
+                .iter()
+                .any(|item| item.name == "empty"),
             "blank parameters should be hidden from preview"
         );
         assert!(!marker.exists(), "dry run must not execute the script");
