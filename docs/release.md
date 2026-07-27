@@ -82,7 +82,9 @@ GitHub Releases 可以先发布未签名 DMG，但用户会遇到 macOS Gatekeep
 
 ## 自动更新
 
-自动更新已接入 Tauri updater，设置页提供手动检查更新入口。updater 包必须签名，当前 key pair 保存在本机 `secrets/` 目录，私钥不提交到仓库。
+自动更新已接入 Tauri updater。应用启动时检查一次，保持运行时每 24 小时检查一次，设置页也可手动检查；发现更新后先展示版本与发布说明，用户确认后才会下载、安装并重启。updater 包必须签名，当前 key pair 保存在本机 `secrets/` 目录，私钥不提交到仓库。
+
+发布 workflow 会通过 GitHub API 生成 `release-notes.md`，同一份内容同时写入 GitHub Release 正文和 `latest.json` 的 `notes` 字段，供应用内更新预览使用。
 
 重新生成 updater key pair：
 

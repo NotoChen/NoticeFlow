@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArrowLeft, Clock, Database, Download, FolderOpen, RefreshCw, RotateCcw, Save, ShieldCheck, X } from "lucide-react";
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { AppIcon, AppPicker } from "../../components/AppPicker";
+import { ConfirmDialog } from "../../components/AppShell";
 import { EmptyBlock, Field, StatusPill } from "../../components/FormBits";
+import type { SoftwareUpdateState } from "../../hooks/useSoftwareUpdate";
 import { Switch } from "../../components/Switch";
 import { sameStringSetIgnoreOrder } from "../../lib/appModel";
 import type {
@@ -17,7 +17,7 @@ import type {
 } from "../../lib/tauri";
 import { chooseDataDirectory, saveAppSettings } from "../../lib/tauri";
 
-type OperationErrorScope = "general" | "update" | "permission" | "data" | "archive";
+type OperationErrorScope = "general" | "permission" | "data" | "archive";
 type OperationErrorState = {
   scope: OperationErrorScope;
   message: string;
@@ -33,6 +33,9 @@ export function SettingsPanel(props: {
   actionQueue: ActionQueueStatus | null;
   archiveStats: ArchiveStats | null;
   systemDeleteAudit: SystemDeleteAuditEntry[];
+  softwareUpdate: SoftwareUpdateState;
+  checkForUpdates: () => Promise<void>;
+  installUpdate: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshMaintenance: () => Promise<void>;
   revealPath: (path: string) => Promise<void>;
@@ -45,7 +48,7 @@ export function SettingsPanel(props: {
 }) {
   const [operationError, setOperationError] = useState<OperationErrorState>(null);
   const [busy, setBusy] = useState("");
-  const [updateMessage, setUpdateMessage] = useState("");
+  const [confirmingUpdate, setConfirmingUpdate] = useState(false);
   const [retentionDays, setRetentionDays] = useState(90);
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [dataDirectory, setDataDirectory] = useState("");
@@ -84,7 +87,6 @@ export function SettingsPanel(props: {
     try {
       await operation();
     } catch (err) {
-      if (scope === "update") setUpdateMessage("");
       setOperationError({
         scope,
         message: err instanceof Error ? err.message : String(err),
@@ -113,34 +115,6 @@ export function SettingsPanel(props: {
     }, "general");
   }
 
-  async function checkForUpdate() {
-    await runOperation("check-update", async () => {
-      setUpdateMessage("正在检查更新");
-      const update = await check({ timeout: 15000 });
-      if (!update) {
-        setUpdateMessage("当前已是最新版本");
-        return;
-      }
-
-      let downloaded = 0;
-      let contentLength = 0;
-      setUpdateMessage(`发现 ${update.version}，正在下载`);
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          downloaded = 0;
-          contentLength = event.data.contentLength ?? 0;
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          setUpdateMessage(contentLength > 0 ? `正在下载 ${formatBytes(downloaded)} / ${formatBytes(contentLength)}` : `正在下载 ${formatBytes(downloaded)}`);
-        } else if (event.event === "Finished") {
-          setUpdateMessage("更新已下载，正在安装");
-        }
-      });
-      setUpdateMessage("更新已安装，正在重启");
-      await relaunch();
-    }, "update");
-  }
-
   function addIgnoredApp(bundleId: string) {
     const value = bundleId.trim();
     if (!value) return;
@@ -158,6 +132,11 @@ export function SettingsPanel(props: {
   const permissionAccessible = permissionChecked && !!props.info?.notificationDatabaseAccessible;
   const permissionLabel = !permissionChecked ? "待检查" : permissionAccessible ? "可读取" : "待授权";
   const filterListLabel = appFilterMode === "include" ? "仅保留应用通知" : "忽略应用通知";
+  const updateBusy = props.softwareUpdate.status === "checking" || props.softwareUpdate.status === "downloading" || props.softwareUpdate.status === "installing";
+  const updateAvailable = props.softwareUpdate.status === "available";
+  const updateProgress = props.softwareUpdate.totalBytes > 0
+    ? Math.min(100, Math.round((props.softwareUpdate.downloadedBytes / props.softwareUpdate.totalBytes) * 100))
+    : null;
   const operationErrorFor = (scope: OperationErrorScope) =>
     operationError?.scope === scope ? <InlineOperationError message={operationError.message} /> : null;
 
@@ -201,13 +180,43 @@ export function SettingsPanel(props: {
         <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="m-0 text-sm font-semibold">软件更新</h2>
-            <button className="button-secondary" disabled={!!busy} onClick={checkForUpdate}>
-              {busy === "check-update" ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+            <button className="button-secondary" disabled={updateBusy} onClick={() => void props.checkForUpdates()}>
+              <RefreshCw size={14} className={props.softwareUpdate.status === "checking" ? "animate-spin" : ""} />
               检查更新
             </button>
           </div>
-          {updateMessage ? <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-slate-700">{updateMessage}</div> : null}
-          {operationErrorFor("update")}
+          <div className="grid grid-cols-2 gap-3">
+            <MiniMetric label="当前版本" value={props.softwareUpdate.currentVersion || "读取中"} />
+            <MiniMetric label="最新版本" value={props.softwareUpdate.latestVersion || (props.softwareUpdate.status === "checking" ? "检查中" : "尚未检查")} />
+          </div>
+
+          {props.softwareUpdate.lastCheckedAt ? (
+            <div className="mt-2 text-xs text-subdued">上次检查：{formatHistoryTime(props.softwareUpdate.lastCheckedAt)} · 每 24 小时自动检查</div>
+          ) : null}
+
+          {updateAvailable ? (
+            <div className="mt-3 grid gap-3 border-t border-border pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">版本 {props.softwareUpdate.latestVersion}</div>
+                  {props.softwareUpdate.releaseDate ? <div className="mt-1 text-xs text-subdued">发布于 {formatHistoryTime(props.softwareUpdate.releaseDate)}</div> : null}
+                </div>
+                <button className="button-primary" onClick={() => setConfirmingUpdate(true)}>
+                  <Download size={14} />
+                  下载并安装
+                </button>
+              </div>
+              <ReleaseNotes notes={props.softwareUpdate.releaseNotes} />
+            </div>
+          ) : null}
+
+          {props.softwareUpdate.status === "latest" ? <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">当前已是最新版本</div> : null}
+          {props.softwareUpdate.status === "checking" ? <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-slate-700">正在检查更新</div> : null}
+          {props.softwareUpdate.status === "downloading" ? (
+            <UpdateProgress downloaded={props.softwareUpdate.downloadedBytes} total={props.softwareUpdate.totalBytes} percent={updateProgress} />
+          ) : null}
+          {props.softwareUpdate.status === "installing" ? <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">更新已下载，正在安装并准备重启</div> : null}
+          {props.softwareUpdate.error ? <InlineOperationError message={props.softwareUpdate.error} /> : null}
         </section>
 
         <section className="rounded-lg border border-border bg-white p-4 shadow-soft">
@@ -393,12 +402,57 @@ export function SettingsPanel(props: {
           </div>
         </section>
       </section>
+      {confirmingUpdate ? (
+        <ConfirmDialog
+          title={`安装 NoticeFlow ${props.softwareUpdate.latestVersion}？`}
+          message={(
+            <div className="grid gap-3">
+              <p className="m-0">将下载并安装新版本，安装完成后 NoticeFlow 会自动重启。</p>
+              <ReleaseNotes notes={props.softwareUpdate.releaseNotes} compact />
+            </div>
+          )}
+          cancelLabel="暂不更新"
+          confirmLabel="确认下载并安装"
+          wide
+          onCancel={() => setConfirmingUpdate(false)}
+          onConfirm={() => {
+            setConfirmingUpdate(false);
+            void props.installUpdate();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 function InlineOperationError({ message }: { message: string }) {
   return <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{message}</div>;
+}
+
+function ReleaseNotes({ notes, compact = false }: { notes: string; compact?: boolean }) {
+  return (
+    <div className={`overflow-auto rounded-md border border-border bg-muted px-3 py-2 ${compact ? "max-h-52" : "max-h-64"}`}>
+      <div className="mb-1 text-xs font-semibold text-slate-700">版本更新说明</div>
+      <div className="whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{notes || "暂无更新说明"}</div>
+    </div>
+  );
+}
+
+function UpdateProgress({ downloaded, total, percent }: { downloaded: number; total: number; percent: number | null }) {
+  return (
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs text-sky-900">
+        <span>正在下载更新</span>
+        <span>{total > 0 ? `${formatBytes(downloaded)} / ${formatBytes(total)} · ${percent}%` : formatBytes(downloaded)}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-sky-100">
+        <div
+          className={`h-full rounded-full bg-sky-600 transition-[width] duration-200 ${percent === null ? "w-1/3 animate-pulse" : ""}`}
+          style={percent === null ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function Metric({ label, value, compact }: { label: string; value: string; compact?: boolean }) {

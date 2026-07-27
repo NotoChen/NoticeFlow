@@ -1,6 +1,6 @@
 [package]
 name = "noticeflow"
-version = "0.2.2"
+version = "0.2.3"
 description = "A local macOS notification automation app built with Tauri."
 authors = ["NotoChen"]
 license = "MIT"
@@ -26,6 +26,9 @@ uuid = { version = "1.18.1", features = ["v4"] }
 walkdir = "2.5.0"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.0"
+# The updater disables reqwest's default features. Re-enable native system
+# proxy discovery so macOS proxy changes (for example Surge) are picked up.
+reqwest = { version = "0.13", default-features = false, features = ["system-proxy"] }
 
 [profile.release]
 opt-level = 3

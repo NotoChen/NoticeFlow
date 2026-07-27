@@ -55,7 +55,17 @@ jobs:
           TAURI_BUNDLER_DMG_IGNORE_CI: "true"
         run: npm run tauri:build:mac:release
 
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${GITHUB_REF_NAME}" \
+            --jq .body > release-notes.md
+
       - name: Create updater manifest
+        env:
+          NOTICEFLOW_RELEASE_NOTES_FILE: release-notes.md
         run: npm run release:manifest
 
       - name: Upload workflow artifact
@@ -69,5 +79,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
-          generate_release_notes: true
+          body_path: release-notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}

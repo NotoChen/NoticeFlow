@@ -10,6 +10,10 @@ if (!tag) {
 
 const version = tag.replace(/^v/, "");
 const releaseDir = "release-assets";
+const releaseNotesPath = process.env.NOTICEFLOW_RELEASE_NOTES_FILE;
+const releaseNotes = releaseNotesPath && existsSync(releaseNotesPath)
+  ? readFileSync(releaseNotesPath, "utf8").trim()
+  : "";
 
 // Each arch builds into its own target dir. The updater bundle is always
 // NoticeFlow.app.tar.gz, so rename it (and the DMG) per arch when copying into
@@ -62,6 +66,7 @@ for (const arch of architectures) {
 const manifest = {
   version,
   pub_date: new Date().toISOString(),
+  ...(releaseNotes ? { notes: releaseNotes } : {}),
   platforms,
 };
 

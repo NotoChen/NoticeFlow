@@ -25,6 +25,7 @@ import { useRulePreview } from "./hooks/useRulePreview";
 import { useRuleTestActions } from "./hooks/useRuleTestActions";
 import { useSettingsMaintenanceActions } from "./hooks/useSettingsMaintenanceActions";
 import { useSettingsViewRefresh } from "./hooks/useSettingsViewRefresh";
+import { useSoftwareUpdate } from "./hooks/useSoftwareUpdate";
 import {
   ActionHistoryEntry,
   ActionQueueStatus,
@@ -109,6 +110,7 @@ export default function App() {
   const applicationRefreshQueuedRef = useRef(false);
   const applicationRefreshQueuedForceRef = useRef(false);
   const activeViewRef = useRef<MainView>("home");
+  const softwareUpdate = useSoftwareUpdate();
 
   const updateStatus = useCallback((nextStatus: AutomationStatus) => {
     setStatus((current) => (sameStatus(current, nextStatus) ? current : nextStatus));
@@ -573,6 +575,12 @@ export default function App() {
       ) : null}
       {error && !systemMessage ? <div className="border-b border-red-200 bg-red-50 px-5 py-2 text-sm text-red-700">{error}</div> : null}
       {notice && !error ? <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-2 text-sm text-emerald-700">{notice}</div> : null}
+      {softwareUpdate.state.status === "available" && activeView !== "settings" ? (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-sky-200 bg-sky-50 px-5 py-2 text-sm text-sky-900">
+          <span>NoticeFlow {softwareUpdate.state.latestVersion} 已发布</span>
+          <button className="button-secondary h-8 border-sky-200" onClick={() => navigateTo("settings")}>查看更新</button>
+        </div>
+      ) : null}
 
       <section className="min-h-0 flex-1 p-4">
         <div className={activeView === "home" ? "h-full min-h-0" : "hidden h-full min-h-0"}>
@@ -692,6 +700,9 @@ export default function App() {
             actionQueue={activeView === "settings" ? actionQueueInfo : null}
             archiveStats={activeView === "settings" ? archiveStatsInfo : null}
             systemDeleteAudit={activeView === "settings" ? systemDeleteAuditItems : []}
+            softwareUpdate={softwareUpdate.state}
+            checkForUpdates={softwareUpdate.checkForUpdates}
+            installUpdate={softwareUpdate.installUpdate}
             refresh={refreshAll}
             refreshMaintenance={loadSettingsMaintenance}
             revealPath={revealPath}

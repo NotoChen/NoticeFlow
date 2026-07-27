@@ -3,18 +3,19 @@ import type { ReactNode } from "react";
 
 export function ConfirmDialog(props: {
   title: string;
-  message: string;
+  message: ReactNode;
   cancelLabel: string;
   confirmLabel: string;
   destructive?: boolean;
+  wide?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 p-6" onClick={props.onCancel}>
-      <div className="w-full max-w-sm rounded-lg border border-border bg-white p-4 shadow-lg" onClick={(event) => event.stopPropagation()}>
+      <div className={`w-full rounded-lg border border-border bg-white p-4 shadow-lg ${props.wide ? "max-w-xl" : "max-w-sm"}`} onClick={(event) => event.stopPropagation()}>
         <h2 className="m-0 text-base font-semibold">{props.title}</h2>
-        <p className="m-0 mt-2 text-sm text-subdued">{props.message}</p>
+        <div className="mt-2 text-sm text-subdued">{props.message}</div>
         <div className="mt-4 flex justify-end gap-2">
           <button className="button-secondary" onClick={props.onCancel}>{props.cancelLabel}</button>
           <button className={props.destructive ? "button-danger" : "button-primary"} onClick={props.onConfirm}>{props.confirmLabel}</button>
