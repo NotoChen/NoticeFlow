@@ -32,6 +32,12 @@ jobs:
           components: clippy
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos
+
       - name: Install frontend dependencies
         run: npm ci
 
@@ -74,6 +80,7 @@ jobs:
           name: NoticeFlow-macOS
           path: release-assets/*
           if-no-files-found: error
+          retention-days: 7
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

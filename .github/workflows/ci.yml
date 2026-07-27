@@ -5,7 +5,17 @@ on:
     branches:
       - main
       - master
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,6 +35,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos
 
       - name: Install frontend dependencies
         run: npm ci
